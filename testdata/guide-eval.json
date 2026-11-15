@@ -446,8 +446,8 @@
       "prompt": "SkillMaster 到底是个什么东西？跟网盘有什么不一样？",
       "page": "product/what-is-skillmaster.md",
       "must": [
-        "托管服务",
-        "地址"
+        "公开技能库",
+        "按需加载"
       ]
     },
     {
@@ -456,7 +456,7 @@
       "prompt": "我老是分不清 Agent 和豆包这类聊天工具，它们到底差在哪？",
       "page": "product/ai-skills-primer.md",
       "must": [
-        "对话窗口",
+        "对话框",
         "读写文件"
       ]
     },
@@ -476,16 +476,17 @@
       "prompt": "我直接把 skill 文件夹拷给同事不就行了，为什么还要用这个平台？",
       "page": "product/why-skillmaster.md",
       "must": [
-        "最新版",
-        "共享"
+        "公开技能库",
+        "云端"
       ]
     },
     {
       "id": "product-getting-started",
       "group": "product",
-      "prompt": "按 guide 的《怎么开始》，装好之后依次要做哪几件事？",
+      "prompt": "新人第一次用，产品文档《怎么开始》里建议依次做哪几件事？",
       "page": "product/getting-started.md",
       "must": [
+        "安装指令",
         "登录",
         "三步"
       ]
@@ -536,7 +537,7 @@
       "page": "product/why-skillmaster.md",
       "must": [
         "共享",
-        "最新版"
+        "线上版本"
       ]
     }
   ]
