@@ -439,6 +439,87 @@
       "any": [
         "--label"
       ]
+    },
+    {
+      "id": "product-what-is",
+      "group": "product",
+      "prompt": "SkillMaster 到底是个什么东西？跟网盘有什么不一样？",
+      "page": "product/what-is-skillmaster.md",
+      "must": [
+        "技能托管服务",
+        "按需加载"
+      ]
+    },
+    {
+      "id": "product-primer",
+      "group": "product",
+      "prompt": "我老是分不清 Agent 和豆包这类聊天工具，它们到底差在哪？",
+      "page": "product/ai-skills-primer.md",
+      "must": [
+        "对话窗口",
+        "读写文件",
+        "skmr --version",
+        "聊天窗口"
+      ]
+    },
+    {
+      "id": "product-capabilities",
+      "group": "product",
+      "prompt": "这个平台到底能帮我做哪些事？我想有个全貌。",
+      "page": "product/capabilities.md",
+      "must": [
+        "找与用",
+        "发与共"
+      ]
+    },
+    {
+      "id": "product-why",
+      "group": "product",
+      "prompt": "我直接把 skill 文件夹拷给同事不就行了，为什么还要用这个平台？",
+      "page": "product/why-skillmaster.md",
+      "must": [
+        "有地址，也有版本",
+        "按需加载，不占本机"
+      ]
+    },
+    {
+      "id": "product-getting-started",
+      "group": "product",
+      "prompt": "我装好了，想让 Agent 帮我用起来，第一步该做什么？",
+      "page": "product/getting-started.md",
+      "must": [
+        "把安装指令交给 Agent",
+        "skmr --version"
+      ]
+    },
+    {
+      "id": "product-faq",
+      "group": "product",
+      "prompt": "用这个要花钱吗？我的东西存在哪里？",
+      "page": "product/faq.md",
+      "must": [
+        "现在使用不收费",
+        "云端数据库"
+      ]
+    },
+    {
+      "id": "product-pitch",
+      "group": "product",
+      "prompt": "我要向懂技术的老板介绍这个产品，有没有一句话的说法？",
+      "page": "product/pitch.md",
+      "must": [
+        "托管到云端",
+        "按需加载"
+      ]
+    },
+    {
+      "id": "product-can-i-use",
+      "group": "product",
+      "prompt": "我只有豆包，能用 SkillMaster 吗？",
+      "page": "product/ai-skills-primer.md",
+      "must": [
+        "聊天窗口"
+      ]
     }
   ]
 }
