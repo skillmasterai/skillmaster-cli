@@ -96,7 +96,9 @@ func brokenReferences(ctx context.Context, client api.Client, address string) (c
 
 	listed, err := client.AuthorFileList(ctx, target.address, target.pin)
 	if err != nil {
-		return checkResult{}, checkRefusal(err)
+		// The list is the first of the two gates this command meets; a `forbidden` here is the
+		// `browse` rung, not the archive's `write`.
+		return checkResult{}, checkListRefusal(err)
 	}
 	pin := digestPinOf(listed.ETag)
 	if pin == "" {
@@ -111,7 +113,7 @@ func brokenReferences(ctx context.Context, client api.Client, address string) (c
 		if errors.As(err, &server) && server.Status == http.StatusNotFound {
 			return checkResult{}, errors.New("检查期间版本变过，请重试。")
 		}
-		return checkResult{}, checkRefusal(err)
+		return checkResult{}, checkArchiveRefusal(err)
 	}
 
 	index := newFileIndex(listed.Files)
@@ -140,6 +142,25 @@ func brokenReferences(ctx context.Context, client api.Client, address string) (c
 // because it is the same rule refusing the same thing (a discarded version is not exportable).
 func checkRefusal(err error) error {
 	return addressRefusal(err)
+}
+
+// checkArchiveRefusal names the rung when the archive's 403 is the reason (ADR 0216); everything
+// else is the ordinary address refusal.
+func checkArchiveRefusal(err error) error {
+	if message, ok := rungRefusal(err, "这个检查要读整包，需要「写入」档。"); ok {
+		return message
+	}
+	return checkRefusal(err)
+}
+
+// checkListRefusal is the same for the manifest step, whose gate is `browse` — one rung below the
+// archive's. Without it the first refusal a read-only relation meets is the server's English
+// envelope, which names no next step in the interface's words.
+func checkListRefusal(err error) error {
+	if message, ok := rungRefusal(err, "这个检查要先看得到文件，需要「浏览」档。"); ok {
+		return message
+	}
+	return checkRefusal(err)
 }
 
 // digestPinOf turns the list response's ETag into the pin the archive understands.
