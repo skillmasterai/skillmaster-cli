@@ -356,6 +356,7 @@ func TestVersionLifecycleRefusalsHaveTheirOwnSentences(t *testing.T) {
 		want   string
 	}{
 		{"a revoked version", http.StatusGone, "version_revoked", "下架"},
+		{"a deleted skill", http.StatusGone, "skill_gone", "已被作者删除"},
 		{"a skill that is offline", http.StatusServiceUnavailable, "skill_offline", "已下线"},
 	}
 	for _, c := range cases {

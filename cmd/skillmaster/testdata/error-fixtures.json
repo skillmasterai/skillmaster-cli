@@ -622,6 +622,12 @@
       "argv": ["feedback", "send", "--file", "testdata/feedback.md", "--attach", "testdata/attachment.png", "--consent", "--json"],
       "status": 503,
       "body": "{\"error\": {\"code\": \"feedback_attachment_unavailable\", \"message\": \"storage down\"}}"
+    },
+    {
+      "code": "api_generation_retired",
+      "argv": ["version", "list", "dev/x", "--json"],
+      "status": 410,
+      "body": "{\"error\":{\"code\":\"api_generation_retired\",\"message\":\"retired\"}}"
     }
   ]
 }
