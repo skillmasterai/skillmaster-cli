@@ -151,20 +151,20 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 
 | 项 | 值 |
 |---|---|
-| 版本串 | **测试期内固定**：`1.1.0-beta`。正式发布时同一个东西叫 `1.1.0` |
-| 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.1.0-beta (a1b2c3d) (API v1)` |
-| 落在哪 | 桶的 `beta/` 下的九个对象 + `beta/version.txt`（内容 `1.1.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
+| 版本串 | **测试期内固定**：`1.5.0-beta`（v79 起）。同一提交的正式构建叫 `1.5.0`；beta 通道在 `1.5.0` 发布后仍叫 `1.5.0-beta`，到 `1.6.0` 开线再改 |
+| 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.5.0-beta (a1b2c3d) (API v1)` |
+| 落在哪 | 桶的 `beta/` 下的九个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
 | 怎么装 | `curl -fsSL https://dl.skillmasterai.com/beta/install.sh \| SKILLMASTER_DL_URL=https://dl.skillmasterai.com/beta sh` |
 | 怎么更新 | 自动更新（v25）按编进去的 `beta/` 通道检查；也可以重跑那条安装命令，看 `--version` 的提交号变没变 |
 | 承诺 | 只有一条：装上的构建说得出来自哪次提交。命令面、状态、数据都不保证 |
 
-**beta 不占版本号，所以版本串与字节不是一一对应的**：同一个 `1.1.0-beta` 会有很多个构建，`beta/version.txt` 记的永远是最近一次。凡是按版本号判断的地方（例如 §2 的「站点只会往前走」）都不适用于 beta。
+**beta 不占版本号，所以版本串与字节不是一一对应的**：同一个 `1.5.0-beta` 会有很多个构建，`beta/version.txt` 记的永远是最近一次。凡是按版本号判断的地方（例如 §2 的「站点只会往前走」）都不适用于 beta。
 
 **不要用 beta 的地址做任何「稳定」的事**：它是内测出口，可以随时换掉或关掉。关掉时删 `beta/` 前缀与本流水线文件即可，正式站点一个键都不用动。
 
 ## 9 · 换代与退役
 
-服务端换到新一代时，新旧两代**并行一段时间**；旧代退役后，旧路径返回 **410** 与 `{"code":"api_generation_retired","supported":["v2"]}`。CLI 认这个码，渲染成一句能照着做的事（**两侧都尚未实现，这是换代时的义务，不是今天的行为**）：「这个 CLI 说的是 API v1，服务器已经只支持 v2。按 https://dl.skillmasterai.com/beta/skillmaster.md 重装。」
+服务端换到新一代时，新旧两代**并行一段时间**；旧代退役后，旧路径返回 **410** 与 `{"error":{"code":"api_generation_retired","message":"…"}}`（契约见 [ADR 0219](../docs/decisions/0219-generation-retirement-uses-the-error-envelope.md)）。CLI 认这个码（v79 已实现），渲染成一句能照着做的事：「这个 CLI 说的是 API v1，服务器已经只支持更新的 API 版本。按 https://dl.skillmasterai.com/skillmaster.md 重装。」**`error.message` 必须携带同一句指引**——1.0–1.4 不认识这个码，服务端不写句子，存量用户就只看到状态码。**服务端侧仍待换代时实现**——今天只有 v1，返回 410 的路径还不存在。
 
 **410 而不是 404**：那个地址存在过。404 会让人往「拼错了」或「被删了」上想。
 
@@ -172,6 +172,6 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 
 ## 10 · 未验证与已知限制
 
-- **Windows 没有实测过。** `windows/amd64` 与 `windows/arm64` 能交叉编译出来（2026-10-25；不加 `-s -w` 时 12 MB / 11 MB，加了之后 amd64 是 8.5 MB），Windows 上的首次登录、`install.ps1` 的 PATH 写入、`.zip` 解包 —— **都没有在真实 Windows 上跑过**。在有 Windows 机器之前，这里写的是「未验证」，不是「支持」。
+- **Windows 没有真机实测过，但从 `1.5.0` 起宣称支持。** `windows/amd64` 与 `windows/arm64` 能交叉编译出来（2026-10-25；不加 `-s -w` 时 12 MB / 11 MB，加了之后 amd64 是 8.5 MB），Windows 上的首次登录、`install.ps1` 的 PATH 写入、`.zip` 解包 —— **都没有在真实 Windows 上跑过**。2026-11-16 的决定与欠账见 [ADR 0218](../docs/decisions/0218-windows-is-claimed-without-a-real-machine.md) 与 [v79 test-plan](../docs/versions/v79-cli-1-5-formal/test-plan.md) §已知问题 K1；这里的「支持」指包能构建、安装说明覆盖 Windows，真机验收仍未执行。
 - **32 位 Windows / 32 位 Linux / FreeBSD / ppc64le / s390x 不发**，理由见 §3。
 - **没有校验和签名**。只有 SHA-256，且它和包在同一台服务器上——这挡得住传输损坏，挡不住有人能写这个 bucket。

@@ -35,7 +35,7 @@ $arch = switch ($machine) {
     'ARM64' { 'arm64' }
     'AMD64' { 'amd64' }
     default {
-        Die "认不出架构「$machine」，没有为它构建的包（32 位 Windows 跑不了 64 位程序）。产物清单与手工安装步骤见 https://dl.skillmasterai.com/beta/skillmaster.md"
+        Die "认不出架构「$machine」，没有为它构建的包（32 位 Windows 跑不了 64 位程序）。产物清单与手工安装步骤见 $($BaseUrl.TrimEnd('/'))/skillmaster.md"
     }
 }
 

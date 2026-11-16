@@ -20,8 +20,9 @@ var Version = "dev"
 
 // Revision is the commit the binary was built from, short form (`a1b2c3d`).
 //
-// **A beta's version string does not move between builds** (ADR 0099): every beta of 1.1.0 says
-// `1.1.0-beta`, and without this the person holding a binary could not tell two of them apart —
+// **A beta's version string does not move between builds** (ADR 0099): every beta of a line says
+// `<line>-beta` (today `1.5.0-beta`), and without this the person holding a binary could not tell
+// two of them apart —
 // nor could a bug report say which build it came from. Formal releases leave it empty: the version
 // number already names one commit for good, and a second identity would only be a second thing to
 // keep in step.

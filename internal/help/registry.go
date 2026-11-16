@@ -39,6 +39,9 @@ var codes = []Code{
 	{Name: "invalid_name", Text: "新名字不能用作 skill 名字", Exit: 1},
 	{Name: "name_not_rewritable", Text: "源 SKILL.md 不能安全改名", Exit: 1},
 	{Name: "version_revoked", Text: "这一版已下架", Exit: 1},
+	// v79 (ADR 0219): the server retired the API generation this binary speaks. An ordinary
+	// failure — the credential is fine; the build is the thing to replace.
+	{Name: "api_generation_retired", Text: "这个 CLI 说的 API 代次已退役", Exit: 1},
 	{Name: "invalid_version_state", Text: "这一版当前状态不能做这个操作", Exit: 1},
 	{Name: "wrong_version_state", Text: "这个状态不适合这个动作", Exit: 1},
 	{Name: "confirmation_required", Text: "这个动作还没有执行", Exit: 1},

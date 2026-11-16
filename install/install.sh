@@ -34,7 +34,7 @@ case "$machine" in
   arm64|aarch64) arch=arm64 ;;
   x86_64|amd64)  arch=amd64 ;;
   *)
-    die "认不出架构「${machine}」，没有为它构建的包。产物清单与手工安装步骤见 https://dl.skillmasterai.com/beta/skillmaster.md —— 如果那边也没有，这个平台暂时装不了。"
+    die "认不出架构「${machine}」，没有为它构建的包。产物清单与手工安装步骤见 ${BASE_URL%/}/skillmaster.md —— 如果那边也没有，这个平台暂时装不了。"
     ;;
 esac
 

@@ -1,6 +1,6 @@
 # 安装路径（给 agent 看的流程图）
 
-> **这是什么**：`skillmaster-site/public/install/skillmaster.md` 的结构图——每一步用话术表的第几行、自己做什么、在哪儿停。
+> **这是什么**：`skillmaster-site/install/skillmaster.md.in` 的结构图——每一步用话术表的第几行、自己做什么、在哪儿停。
 > **终点在哪**：**CLI 能跑就算装完**。装好之后交给 `skmr startup`，登录、接 Agent、清单都由它管；安装说明不替它开头。
 > **权威在哪**：要说的每一句话以那份说明页的「话术定稿」表为准，这份只画流程；两者不一致时改这份。
 

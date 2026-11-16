@@ -24,6 +24,9 @@ var genericCodes = map[string]bool{
 	"server_error":            true,
 	"insufficient_permission": true,
 	"not_found":               true,
+	// v79 (ADR 0219): a generation retirement can answer any API call, so no single command owns
+	// the path; the code still belongs in the registry (exit 1) for `help` and the conformance test.
+	"api_generation_retired": true,
 }
 
 // exitSet is the distinct statuses a projection carries.
@@ -38,6 +41,17 @@ func exitSet(codes []int) []int {
 	}
 	sort.Ints(set)
 	return set
+}
+
+// v79 (ADR 0219): a retired API generation is an ordinary failure. The registry says 1, and the
+// classifier must not hand it to the credential class — that would tell a script to re-authenticate
+// for a problem only a reinstall fixes.
+func TestRetiredGenerationExitsOne(t *testing.T) {
+	failure := &cliFailure{ServerCode: "api_generation_retired"}
+	classifyExit(failure)
+	if got := failureExit(failure); got != 1 {
+		t.Errorf("a retired generation exits %d, want 1", got)
+	}
 }
 
 func TestDeclarationsProjectEveryExitClass(t *testing.T) {

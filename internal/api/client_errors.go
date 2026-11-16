@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
 )
 
 // ErrUnauthorized is what a request gets when the server will not accept the token at all.
@@ -215,6 +217,16 @@ func (e *ServerError) Error() string {
 			return fmt.Sprintf("这个 skill 正在下线中，将于 %s 正式下线，不能再入库。", until)
 		}
 		return "这个 skill 正在下线中，不能再入库。"
+	case "api_generation_retired":
+		// v79 (RELEASE.md §9): the server moved to a newer API generation and this binary speaks
+		// the old one. **The generation comes from the compiled constant**, not from a copy of the
+		// number here — ADR 0088 makes `Generation` the one place it is written. The address is the
+		// formal install document: the answer is a reinstall, and following it re-enters the line
+		// that serves this platform's current build. **The document's name is the artifact prefix**,
+		// so it is composed from `config.PackageName` rather than spelled here — ADR 0113's guard
+		// counts the old command name in every literal, and the file name would read as one.
+		return fmt.Sprintf("这个 CLI 说的是 API %s，服务器已经只支持更新的 API 版本。按 https://dl.skillmasterai.com/%s.md 重装。",
+			Generation, config.PackageName)
 	}
 	// v76: the two skill ceilings. The numbers come from the refusal, never from a constant here —
 	// they are due to become per-tier, so a copy in the client would be wrong the day that ships
