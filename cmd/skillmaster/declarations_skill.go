@@ -382,6 +382,7 @@ var skillSpecs = []*help.Spec{
 			{Code: "draft_name_too_long", Summary: "名称太长", Next: "缩短 --name"},
 			{Code: "note_too_long", Summary: "说明太长", Next: "缩短 --note"},
 			{Code: "internal_error", Summary: "服务端内部错误", Next: "稍后重试；一直出现就报告"},
+			{Code: "skill_quota_exceeded", Summary: "新名字会让命名空间的 skill 超过上限", Next: "删除不再使用的 skill；给已有的 skill 提交新版本不算新增"},
 		},
 		Examples: []string{"skmr skill submit . --name 首版", "skmr skill submit ./my-skill --name 从本机导入"},
 		Parent:   "skill", Next: "在浏览器里点上线：skmr version open <地址>@<版本码> --sub actions", Exits: exitsWithCredential,
@@ -417,6 +418,7 @@ var skillSpecs = []*help.Spec{
 		JSONFields: []string{"namespace", "name", "version_code", "version_name", "state"},
 		Failures: []help.Failure{
 			{Code: "skill_already_exists", Summary: "这个名字已被占用", Next: "换一个名字"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{"skmr skill create pdf-tools --description 处理 PDF 的工具"},
 		Parent:   "skill", Exits: exitsWithCredential,
@@ -443,6 +445,7 @@ var skillSpecs = []*help.Spec{
 			{Code: "skill_offline", Summary: "源已下线", Next: "等作者恢复服务"},
 			{Code: "invalid_name", Summary: "新名字不能用作地址", Next: "1–64 个小写字母、数字和连字符"},
 			{Code: "name_not_rewritable", Summary: "源 SKILL.md 不能安全改名", Next: "用原名复制，再在编辑器里改"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{
 			"skmr skill copy dev/pdf-tools --name pdf-tools-copy",
@@ -572,6 +575,7 @@ var skillSpecs = []*help.Spec{
 		Failures: []help.Failure{
 			{Code: "skill_not_joinable", Summary: "这个 skill 现在加入不了", Next: "用 skmr skills list 看它现在是什么"},
 			{Code: "skill_offline_pending", Summary: "这个 skill 正在下线中，不能再入库", Next: "要保留它用 skmr skill copy <地址>"},
+			{Code: "skill_quota_exceeded", Summary: "库里的 skill 到上限了", Next: "移出「我加入的」；共享给我的要分享方撤销"},
 		},
 		Examples: []string{"skmr skill join dev/pdf-tools --yes"},
 		Parent:   "skill", Exits: exitsWithCredential,
@@ -598,6 +602,7 @@ var skillSpecs = []*help.Spec{
 		Failures: []help.Failure{
 			{Code: "not_found", Summary: "没有这个已删除的 skill", Next: "用 skills list --show deleted 核对"},
 			{Code: "insufficient_permission", Summary: "你不是所有者", Next: "请所有者来恢复"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{"skmr skill restore dev/pdf-tools"},
 		Parent:   "skill", Exits: exitsWithCredential,
