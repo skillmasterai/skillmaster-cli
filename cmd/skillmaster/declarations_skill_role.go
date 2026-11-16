@@ -7,6 +7,7 @@ import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
 var skillRoleSpecs = []*help.Spec{
 	{
 		Path: "skill role", Summary: "改已生效协作者的档位",
+		Group: "库与共享",
 		Usage: "skmr skill role <命名空间>/<名字> --user <用户名> --role <档位> [--json]",
 		Flags: []help.Flag{
 			{Name: "--user", Value: "<用户名>", Summary: "改谁"},

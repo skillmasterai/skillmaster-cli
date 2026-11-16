@@ -20,27 +20,14 @@ func Render(cat Catalog, path string) string {
 	}
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "%s\n\n", spec.Summary)
+	writeHeading(&b, cat, spec)
 	fmt.Fprintf(&b, "用法：%s\n", usageLine(spec))
 	if spec.Note != "" {
 		fmt.Fprintf(&b, "%s\n", spec.Note)
 	}
 
 	if len(spec.Children) > 0 {
-		b.WriteString("\n子命令：\n")
-		width := 0
-		for _, child := range spec.Children {
-			if len(child) > width {
-				width = len(child)
-			}
-		}
-		for _, child := range spec.Children {
-			childSpec, ok := Lookup(cat, joinPath(path, child))
-			if !ok {
-				continue
-			}
-			fmt.Fprintf(&b, "  %-*s  %s\n", width, child, childSpec.Summary)
-		}
+		writeChildren(&b, cat, spec)
 	}
 
 	if flags := append(append([]Flag{}, spec.Flags...), Universal(cat, path)...); len(flags) > 0 && !isPureGroup(spec) {
@@ -83,6 +70,12 @@ func Render(cat Catalog, path string) string {
 	if spec.Next != "" {
 		fmt.Fprintf(&b, "下一步：%s\n", spec.Next)
 	}
+	// A grouped page names the two places with the details: each verb's own page, and the
+	// generated full reference (v77). An ungrouped page keeps the v16 shape plus the count line.
+	if spec.PureGroup && len(spec.Children) > 0 && spec.Path != "" && len(groupOrder(cat, spec)) > 0 && allGrouped(cat, spec) {
+		fmt.Fprintf(&b, "逐条说明：skmr %s <子命令> --help\n", spec.Path)
+		b.WriteString("完整参考：skmr help reference\n")
+	}
 
 	if !isPureGroup(spec) {
 		if spec.ExitNote != "" {
@@ -92,6 +85,113 @@ func Render(cat Catalog, path string) string {
 		}
 	}
 	return b.String()
+}
+
+// writeHeading renders the first line. A pure group with children states how many verbs it holds,
+// and — when its declarations carry Group — how many in each. The numbers come from the
+// declarations, never from a hand-written list (v77): adding a verb changes the line by itself.
+func writeHeading(b *strings.Builder, cat Catalog, spec *Spec) {
+	if spec.PureGroup && len(spec.Children) > 0 {
+		fmt.Fprintf(b, "%s · 共 %d 个动作", spec.Summary, len(spec.Children))
+		groups := groupOrder(cat, spec)
+		if len(groups) > 0 && allGrouped(cat, spec) {
+			parts := make([]string, 0, len(groups))
+			for _, group := range groups {
+				parts = append(parts, fmt.Sprintf("%s %d", group, countGroup(cat, spec, group)))
+			}
+			fmt.Fprintf(b, "，%d 组：%s", len(groups), strings.Join(parts, " · "))
+		}
+		b.WriteString("\n\n")
+		return
+	}
+	fmt.Fprintf(b, "%s\n\n", spec.Summary)
+}
+
+// writeChildren renders the verb list. Declarations that carry Group get group headers (v77);
+// declarations that do not keep the v16 "子命令：" block byte for byte.
+func writeChildren(b *strings.Builder, cat Catalog, spec *Spec) {
+	width := 0
+	for _, child := range spec.Children {
+		if n := utf8.RuneCountInString(child); n > width {
+			width = n
+		}
+	}
+	groups := groupOrder(cat, spec)
+	// A page with any ungrouped verb falls back to the flat block: rendering only the grouped
+	// ones would make the missing verbs disappear while the count line still counts them.
+	if len(groups) == 0 || !allGrouped(cat, spec) {
+		b.WriteString("\n子命令：\n")
+		for _, child := range spec.Children {
+			childSpec, ok := Lookup(cat, joinPath(spec.Path, child))
+			if !ok {
+				continue
+			}
+			fmt.Fprintf(b, "  %-*s  %s\n", width, child, childSpec.Summary)
+		}
+		return
+	}
+	for _, group := range groups {
+		fmt.Fprintf(b, "\n%s (%d)\n", group, countGroup(cat, spec, group))
+		for _, child := range spec.Children {
+			childSpec, ok := Lookup(cat, joinPath(spec.Path, child))
+			if !ok || childSpec.Group != group {
+				continue
+			}
+			fmt.Fprintf(b, "  %-*s  %s\n", width, child, childSpec.Summary)
+		}
+	}
+}
+
+// groupOrder is the order the groups are rendered in: the order each label first appears in the
+// parent's Children. An empty result means the page is not grouped.
+func groupOrder(cat Catalog, spec *Spec) []string {
+	seen := make(map[string]bool, len(spec.Children))
+	var order []string
+	for _, child := range spec.Children {
+		childSpec, ok := Lookup(cat, joinPath(spec.Path, child))
+		if !ok || childSpec.Group == "" || seen[childSpec.Group] {
+			continue
+		}
+		seen[childSpec.Group] = true
+		order = append(order, childSpec.Group)
+	}
+	return order
+}
+
+// allGrouped reports whether every child carries a Group. A mixed page renders flat, so no verb
+// can vanish from the list while the count line still counts it.
+func allGrouped(cat Catalog, spec *Spec) bool {
+	for _, child := range spec.Children {
+		childSpec, ok := Lookup(cat, joinPath(spec.Path, child))
+		if !ok || childSpec.Group == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func countGroup(cat Catalog, spec *Spec, group string) int {
+	n := 0
+	for _, child := range spec.Children {
+		childSpec, ok := Lookup(cat, joinPath(spec.Path, child))
+		if ok && childSpec.Group == group {
+			n++
+		}
+	}
+	return n
+}
+
+// RenderTopic returns a topic's page. A topic with Render generates it from the catalog; every
+// other topic reads its Body. The kernel does not know which topic is generated (v77).
+func RenderTopic(cat Catalog, name string) (string, bool) {
+	topic, ok := cat.Topic(name)
+	if !ok {
+		return "", false
+	}
+	if topic.Render != nil {
+		return topic.Render(cat), true
+	}
+	return topic.Body, true
 }
 
 // isPureGroup reads the declaration's own marker. It is not inferred from the other fields: a
@@ -160,7 +260,7 @@ func RenderTop(cat Catalog) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\n", root.Summary)
+	fmt.Fprintf(&b, "%s · 共 %d 个顶层项\n\n", root.Summary, len(root.Children))
 	b.WriteString("用法：skmr <命令> [参数]\n\n命令：\n")
 	width := 0
 	for _, child := range root.Children {

@@ -6,8 +6,8 @@ import (
 	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
 )
 
-// commandHelp is the whole command table: 76 command paths, nine pure groups, the top level, and
-// three topics. The declarations live here, next to the handlers, because the help and the command have one
+// commandHelp is the whole command table: 99 command paths, nine pure groups, the top level, and
+// four topics. The declarations live here, next to the handlers, because the help and the command have one
 // home (v16 做 #7). One declaration per command; the command-tree test proves the set matches the
 // dispatch.
 type declarationsCatalog struct {
@@ -110,6 +110,11 @@ logout 会清本机；CLI 登录还会结束服务端那次登录，key 只清�
   二进制：skill write <地址>@<版本码> <路径> --from <本地文件>
 `,
 		},
+		"reference": {
+			Name:   "reference",
+			Label:  "完整参考",
+			Render: help.RenderReference,
+		},
 	},
 	specs: append(append(append(append(append(append(append(append(append(append(topSpecs, skillSpecs...),
 		skillFileSpecs...), skillRoleSpecs...), skillPageSpecs...), otherSpecs...),
@@ -127,7 +132,7 @@ var topSpecs = []*help.Spec{
 	{
 		Path:      "skill",
 		Summary:   "单个 skill 的动词",
-		Children:  []string{"invoke", "ls", "find", "stat", "head", "tail", "read", "cat", "wc", "grep", "check", "write", "get", "edit", "rm", "mv", "cp", "versions", "submit", "share", "create", "copy", "shares", "role", "unshare", "request", "open", "show", "license", "tags", "tag", "category", "my-when-to-use", "join", "leave", "restore", "delete", "offline", "online", "visibility"},
+		Children:  []string{"invoke", "versions", "show", "license", "open", "ls", "find", "stat", "head", "tail", "read", "cat", "wc", "grep", "check", "get", "write", "edit", "rm", "mv", "cp", "submit", "create", "copy", "join", "leave", "share", "shares", "role", "unshare", "request", "tags", "tag", "category", "my-when-to-use", "restore", "delete", "offline", "online", "visibility"},
 		PureGroup: true,
 	},
 	{
