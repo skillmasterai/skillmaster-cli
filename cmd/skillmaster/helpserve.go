@@ -39,11 +39,11 @@ func helpRequest(args []string) (bool, error) {
 		fmt.Print(text)
 		return true, nil
 	case help.KindTopic:
-		topic, ok := help.TopicOf(commandHelp, resolution.Topic)
+		text, ok := help.RenderTopic(commandHelp, resolution.Topic)
 		if !ok {
 			return true, usagef("没有这个帮助主题 %s。%s", namedArgument(resolution.Topic), topicList())
 		}
-		fmt.Print(topic.Body)
+		fmt.Print(text)
 		return true, nil
 	case help.KindUnknownTopic:
 		return true, usagef("没有这个帮助主题 %s。%s上级：skmr help",

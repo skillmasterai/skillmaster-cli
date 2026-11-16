@@ -88,7 +88,14 @@ func TestRenderedHelpAgreesWithItsDeclaration(t *testing.T) {
 			if text == "" {
 				t.Fatalf("%q renders nothing", spec.Path)
 			}
-			if first, _, _ := strings.Cut(text, "\n"); first != spec.Summary {
+			// A pure group with children states its size on the first line (v77); every other
+			// page's first line is the summary itself.
+			first, _, _ := strings.Cut(text, "\n")
+			if spec.PureGroup && len(spec.Children) > 0 {
+				if !strings.HasPrefix(first, spec.Summary+" · 共 ") {
+					t.Errorf("the first line is %q, want the summary %q followed by a count", first, spec.Summary)
+				}
+			} else if first != spec.Summary {
 				t.Errorf("the first line is %q, want the summary %q", first, spec.Summary)
 			}
 			sections := helpSections(text)

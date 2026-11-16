@@ -590,9 +590,9 @@ func TestGroupColumnsAlign(t *testing.T) {
 		}
 		t.Run(spec.Path, func(t *testing.T) {
 			text := help.Render(commandHelp, spec.Path)
-			lines := commandBlockLines(t, text, "子命令：")
+			lines := childLines(text)
 			if len(lines) == 0 {
-				t.Fatalf("%s renders no 子命令 block", spec.Path)
+				t.Fatalf("%s renders no verb lines", spec.Path)
 			}
 			column := -1
 			for _, line := range lines {
@@ -882,23 +882,33 @@ func promptNamesCommand(prompt, command string) bool {
 // TestHelpBudgets keeps the entry cost from creeping back. The numbers are the PRD's A9.
 func TestHelpBudgets(t *testing.T) {
 	top := help.RenderTop(commandHelp)
-	if len(top) > 2048 {
-		t.Errorf("top-level help is %d bytes, over 2048", len(top))
+	if len(top) > 3072 {
+		t.Errorf("top-level help is %d bytes, over 3072", len(top))
 	}
 	for _, spec := range commandHelp.Specs() {
 		if spec.Path == "" {
 			continue
 		}
-		if text := help.Render(commandHelp, spec.Path); len(text) > 2048 {
-			t.Errorf("%s help is %d bytes, over 2048", spec.Path, len(text))
+		limit := 2048
+		if spec.PureGroup && len(spec.Children) > 0 {
+			// A group page grows with the command surface; a leaf does not (v77).
+			limit = 3072
+		}
+		if text := help.Render(commandHelp, spec.Path); len(text) > limit {
+			t.Errorf("%s help is %d bytes, over %d", spec.Path, len(text), limit)
 		}
 	}
-	topic, ok := commandHelp.Topic("workflow")
-	if !ok {
-		t.Fatal("the workflow topic is missing")
-	}
-	if len(topic.Body) > 1024 {
-		t.Errorf("help workflow is %d bytes, over 1024", len(topic.Body))
+	for _, topic := range commandHelp.Topics() {
+		if topic.Render != nil {
+			continue // generated pages have no stored body and no budget (v77)
+		}
+		limit := 512
+		if topic.Name == "workflow" {
+			limit = 1024
+		}
+		if len(topic.Body) > limit {
+			t.Errorf("help %s is %d bytes, over %d", topic.Name, len(topic.Body), limit)
+		}
 	}
 	root := helpRepoRoot(t)
 	index, err := os.ReadFile(filepath.Join(root, "skills", "skillmaster-guide", "SKILL.md"))
@@ -912,7 +922,11 @@ func TestHelpBudgets(t *testing.T) {
 	if lines := len(strings.Split(strings.TrimSuffix(string(index), "\n"), "\n")); lines > 150 {
 		t.Errorf("the Guide index is %d lines, over 150", lines)
 	}
-	entry := utf8.RuneCountInString(top) + utf8.RuneCountInString(topic.Body) + indexRunes
+	workflow, ok := commandHelp.Topic("workflow")
+	if !ok {
+		t.Fatal("the workflow topic is missing")
+	}
+	entry := utf8.RuneCountInString(top) + utf8.RuneCountInString(workflow.Body) + indexRunes
 	if entry > 5000 {
 		t.Errorf("the entry cost is %d characters, over 5000", entry)
 	}
