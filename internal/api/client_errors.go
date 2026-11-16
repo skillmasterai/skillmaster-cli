@@ -186,6 +186,9 @@ type IssueDetail struct {
 	// ADR 0181's text limits, in code points; zero means the server did not say.
 	ActualCodePoints int64
 	LimitCodePoints  int64
+	// v76's skill quotas count entries; zero means the server did not say (ADR 0214).
+	ActualCount int64
+	LimitCount  int64
 }
 
 // Error is the sentence a person reads. The two lifecycle cases are spelled out because they are
@@ -213,6 +216,17 @@ func (e *ServerError) Error() string {
 		}
 		return "这个 skill 正在下线中，不能再入库。"
 	}
+	// v76: the two skill ceilings. The numbers come from the refusal, never from a constant here —
+	// they are due to become per-tier, so a copy in the client would be wrong the day that ships
+	// (ADR 0214). Which pool is full travels in the detail's `issue`.
+	if e.Code == "skill_quota_exceeded" {
+		if sentence := quotaSentence(e.DetailList); sentence != "" {
+			return sentence
+		}
+		// No counts means an older server. Falling through to its own message is what the console
+		// does with the same input; inventing a third sentence here would make the two surfaces
+		// disagree about the same refusal (ADR 0214).
+	}
 	if e.Message != "" {
 		return e.Message
 	}
@@ -220,6 +234,31 @@ func (e *ServerError) Error() string {
 		return e.Body
 	}
 	return fmt.Sprintf("服务端答 %d", e.Status)
+}
+
+// quotaSentence is voice-spec §数量上限的两句话, filled with the counts the server sent.
+//
+// **Both sentences are the interface's, word for word** — the console renders the same two from
+// the same fields (ADR 0214). Empty means "this refusal did not say which ceiling or how full":
+// an older server, or a detail that lost its counts. The caller then falls back to the server's own
+// message, exactly as the console does, rather than inventing a third sentence — a refusal with no
+// numbers that names the wrong pool is worse than one in English (both counts are required because
+// a refusal always has both; a zero is a field that did not arrive).
+func quotaSentence(details []IssueDetail) string {
+	for _, detail := range details {
+		if detail.ActualCount == 0 || detail.LimitCount == 0 {
+			continue
+		}
+		switch detail.Issue {
+		case "namespace":
+			return fmt.Sprintf("这个命名空间已有 %d 个 skill，达到上限 %d 个。"+
+				"删除不再使用的 skill 后可继续创建。", detail.ActualCount, detail.LimitCount)
+		case "library":
+			return fmt.Sprintf("共享给我和我加入的 skill 已有 %d 个，达到上限 %d 个。"+
+				"移出库后可继续入库。", detail.ActualCount, detail.LimitCount)
+		}
+	}
+	return ""
 }
 
 // Is lets the v14 routes' 404 — which keeps its envelope so the caller can read the code — still
@@ -251,6 +290,12 @@ func serverError(status int, body []byte) error {
 			}
 			if detail.LimitCodePoints != nil {
 				entry.LimitCodePoints = *detail.LimitCodePoints
+			}
+			if detail.ActualCount != nil {
+				entry.ActualCount = *detail.ActualCount
+			}
+			if detail.LimitCount != nil {
+				entry.LimitCount = *detail.LimitCount
 			}
 			ordered = append(ordered, entry)
 		}

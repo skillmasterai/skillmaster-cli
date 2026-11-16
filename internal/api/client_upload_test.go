@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -52,5 +53,29 @@ func TestUploadRefusalsKeepTheirDetails(t *testing.T) {
 	if len(overCeiling.DetailList) != 1 || overCeiling.DetailList[0].LimitBytes != 134217728 ||
 		overCeiling.DetailList[0].ActualBytes != 314572800 {
 		t.Errorf("details = %#v, want the snake_case byte counts", overCeiling.DetailList)
+	}
+
+	// **A 409 keeps them too** (v76). `skill submit` creates a skill when the name is new, so it is
+	// one of the paths the namespace ceiling answers; the branch used to build a `ServerError` by
+	// hand, and the quota sentence — which needs both counts — lost them and named the wrong pool.
+	overQuota := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":{"code":"skill_quota_exceeded","message":"full",
+			"details":[{"field":"quota","issue":"namespace","actual_count":200,"limit_count":200}]}}`))
+	}))
+	defer overQuota.Close()
+
+	_, err = Client{BaseURL: overQuota.URL, Token: "t"}.Submit(context.Background(), []byte("zip"),
+		"a name", "", "")
+	var full *ServerError
+	if !errors.As(err, &full) || full.Code != "skill_quota_exceeded" {
+		t.Fatalf("err = %v, want a ServerError carrying the quota code", err)
+	}
+	if len(full.DetailList) != 1 || full.DetailList[0].ActualCount != 200 ||
+		full.DetailList[0].LimitCount != 200 || full.DetailList[0].Issue != "namespace" {
+		t.Fatalf("details = %#v, want the two counts and the pool", full.DetailList)
+	}
+	if got := full.Error(); !strings.Contains(got, "200") || !strings.Contains(got, "这个命名空间") {
+		t.Errorf("sentence = %q, want the namespace sentence with the numbers", got)
 	}
 }
