@@ -979,7 +979,7 @@ func TestTheSkillAndSkillsGroupsOwnTheirVerbs(t *testing.T) {
 		if err != nil {
 			t.Errorf("%v: %v", path, err)
 		}
-		if !strings.Contains(out, "子命令：") {
+		if !strings.Contains(out, "子命令：") && !strings.Contains(out, "读与用 (") {
 			t.Errorf("%v printed no command block:\n%s", path, out)
 		}
 	}

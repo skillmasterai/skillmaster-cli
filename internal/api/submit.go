@@ -95,7 +95,7 @@ type errorEnvelope struct {
 			// ADR 0181: text fields are measured in Unicode code points, not bytes.
 			ActualCodePoints *int64 `json:"actual_code_points"`
 			LimitCodePoints  *int64 `json:"limit_code_points"`
-			// v76: the two skill quotas count entries, so neither unit above applies (ADR 0214).
+			// v76: the two skill quotas count entries, so neither unit above applies (ADR 0215).
 			ActualCount *int64 `json:"actual_count"`
 			LimitCount  *int64 `json:"limit_count"`
 		} `json:"details"`
@@ -267,7 +267,7 @@ func (c Client) upload(ctx context.Context, path string, archive []byte, name, n
 		if json.Unmarshal(answer, &envelope) == nil && envelope.Error.Code != "" {
 			// **The details travel with it.** v76's `skill_quota_exceeded` is answered here, and
 			// its sentence needs the two counts; a hand-built ServerError without a DetailList
-			// would fall back to a sentence with no numbers and name the wrong pool (ADR 0214).
+			// would fall back to a sentence with no numbers and name the wrong pool (ADR 0215).
 			return SubmitResult{}, serverError(resp.StatusCode, answer)
 		}
 	}

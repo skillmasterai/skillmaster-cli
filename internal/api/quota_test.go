@@ -2,7 +2,7 @@ package api
 
 import "testing"
 
-// v76 (ADR 0214): the two ceiling sentences are voice-spec §数量上限的两句话, filled with the counts
+// v76 (ADR 0215): the two ceiling sentences are voice-spec §数量上限的两句话, filled with the counts
 // the refusal carried. The numbers are the server's — a constant here would go stale the day the
 // limits become per-tier.
 func TestSkillQuotaSentence(t *testing.T) {

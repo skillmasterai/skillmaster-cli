@@ -8,6 +8,7 @@ import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
 var skillPageSpecs = []*help.Spec{
 	{
 		Path: "skill delete", Summary: "删除 skill（网页）",
+		Group: "生命周期",
 		// **The confirmation switch is deliberately not in this help** (ADR 0128). Help must
 		// offer the safe command: running it prints the consequence and, only when the server would
 		// allow the delete, the full command to confirm with. Advertising it here would make a
@@ -28,6 +29,7 @@ var skillPageSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill offline", Summary: "下线（打开网页确认）",
+		Group: "生命周期",
 		Usage: "skmr skill offline <命名空间>/<名字> [--print] [--json]",
 		Flags: []help.Flag{
 			{Name: "--print", Summary: "只打印地址，不打开浏览器"},
@@ -44,6 +46,7 @@ var skillPageSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill online", Summary: "恢复服务（打开网页确认）",
+		Group: "生命周期",
 		Usage: "skmr skill online <命名空间>/<名字> [--print] [--json]",
 		Flags: []help.Flag{
 			{Name: "--print", Summary: "只打印地址，不打开浏览器"},
@@ -60,6 +63,7 @@ var skillPageSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill visibility", Summary: "改可见性（打开网页确认）",
+		Group: "生命周期",
 		Usage: "skmr skill visibility <命名空间>/<名字> [--print] [--json]",
 		Flags: []help.Flag{
 			{Name: "--print", Summary: "只打印地址，不打开浏览器"},

@@ -74,7 +74,7 @@ var codes = []Code{
 
 	// Membership and tags.
 	{Name: "skill_not_joinable", Text: "这个 skill 现在加入不了", Exit: 1},
-	// v76 (ADR 0214): one of the two quantity ceilings. Neutral on purpose — the same code means
+	// v76 (ADR 0215): one of the two quantity ceilings. Neutral on purpose — the same code means
 	// the namespace ceiling on create/copy/submit/restore and the library ceiling on join/accept,
 	// so this line must not name either pool. The full sentence with both numbers, and which pool
 	// it was, comes from the refusal's `details`.

@@ -245,6 +245,71 @@ func TestASecondTopicReachesEverywhereItIsNamed(t *testing.T) {
 	}
 }
 
+// A page with any ungrouped verb falls back to the flat block, so no verb disappears while the
+// count line still counts it (v77).
+func TestMixedGroupingKeepsEveryVerb(t *testing.T) {
+	cat := testCatalog{specs: []*Spec{
+		{Path: "g", Summary: "一组", Children: []string{"a", "b"}, PureGroup: true},
+		{Path: "g a", Summary: "甲", Parent: "g", Group: "甲组"},
+		{Path: "g b", Summary: "乙", Parent: "g"},
+	}}
+	text := Render(cat, "g")
+	for _, want := range []string{"  a ", "  b "} {
+		if !strings.Contains(text, want) {
+			t.Errorf("a mixed page dropped %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "甲组 (") {
+		t.Errorf("a mixed page rendered group headers:\n%s", text)
+	}
+	if !strings.Contains(text, "子命令：") {
+		t.Errorf("a mixed page did not fall back to the flat block:\n%s", text)
+	}
+	first := strings.SplitN(text, "\n", 2)[0]
+	if strings.Contains(first, "甲组") {
+		t.Errorf("a mixed page's first line still claims a group: %q", first)
+	}
+	if strings.Contains(text, "逐条说明：") || strings.Contains(text, "完整参考：") {
+		t.Errorf("a mixed page carries the exits:\n%s", text)
+	}
+}
+
+// The first line's counts are derived from the children, not hand-written: adding a verb changes
+// both the total and the group's count (v77).
+func TestFirstLineCountFollowsDeclarations(t *testing.T) {
+	cat := testCatalog{specs: []*Spec{
+		{Path: "g", Summary: "一组", Children: []string{"a", "b"}, PureGroup: true},
+		{Path: "g a", Summary: "甲", Parent: "g", Group: "甲组"},
+		{Path: "g b", Summary: "乙", Parent: "g", Group: "乙组"},
+	}}
+	first := strings.SplitN(Render(cat, "g"), "\n", 2)[0]
+	if !strings.Contains(first, "共 2 个动作，2 组：甲组 1 · 乙组 1") {
+		t.Errorf("the first line = %q", first)
+	}
+	cat.specs[0].Children = append(cat.specs[0].Children, "c")
+	cat.specs = append(cat.specs, &Spec{Path: "g c", Summary: "丙", Parent: "g", Group: "甲组"})
+	first = strings.SplitN(Render(cat, "g"), "\n", 2)[0]
+	if !strings.Contains(first, "共 3 个动作，2 组：甲组 2 · 乙组 1") {
+		t.Errorf("after adding a verb, the first line = %q", first)
+	}
+}
+
+// RenderTopic consults Render when a topic provides one, and Body otherwise (v77). The kernel does
+// not know which topic is generated.
+func TestRenderTopicUsesRenderWhenSet(t *testing.T) {
+	cat := fixture()
+	cat.topics["gen"] = Topic{Name: "gen", Label: "生成", Render: func(Catalog) string { return "生成页\n" }}
+	if text, ok := RenderTopic(cat, "gen"); !ok || text != "生成页\n" {
+		t.Errorf("RenderTopic(gen) = %q, %v", text, ok)
+	}
+	if text, ok := RenderTopic(cat, "env"); !ok || text != cat.topics["env"].Body {
+		t.Errorf("RenderTopic(env) = %q, %v", text, ok)
+	}
+	if _, ok := RenderTopic(cat, "missing"); ok {
+		t.Error("RenderTopic(missing) reported a page")
+	}
+}
+
 // Every command that can return 4 gets the two shared failures, and only those commands do: a
 // refusal or a machine-local command never mentions a credential or a network.
 func TestUniversalFailuresFollowTheExitList(t *testing.T) {

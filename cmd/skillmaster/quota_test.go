@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// v76 (ADR 0214): the ceiling sentence reaches the command's own output — what a person sees — and
+// v76 (ADR 0215): the ceiling sentence reaches the command's own output — what a person sees — and
 // the status is non-zero. The unit tests prove the formatter; this proves the wiring, which is
 // where the sentences were once lost (`skill submit` built its own error and dropped the counts).
 func TestQuotaRefusalsReachTheCommandOutput(t *testing.T) {

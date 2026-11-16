@@ -49,7 +49,7 @@ func TestGroupHelpListsItsChildren(t *testing.T) {
 				t.Errorf("%v: status %d, stderr %q", args, status, stderr)
 				continue
 			}
-			listed := blockChildren(stdout)
+			listed := listedChildren(stdout)
 			if got, want := sorted(listed), sorted(spec.Children); !equal(got, want) {
 				t.Errorf("%v lists %v, want %v:\n%s", args, got, want, stdout)
 				continue
@@ -83,6 +83,55 @@ func parentLineFor(path string) string {
 		return "上级：skmr help"
 	}
 	return "上级：skmr " + strings.Join(words[:len(words)-1], " ") + " --help"
+}
+
+// listedChildren reads the verb lines of either shape: the v16 "子命令：" block, or the v77
+// group blocks, where the only indented lines on the page are the verbs.
+func listedChildren(out string) []string {
+	if children := blockChildren(out); children != nil {
+		return children
+	}
+	var children []string
+	for _, line := range childLines(out) {
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			children = append(children, fields[0])
+		}
+	}
+	return children
+}
+
+// childLines returns the raw verb lines: the block under "子命令：", or every indented line when
+// the page uses group headers.
+func childLines(out string) []string {
+	if _, after, found := strings.Cut(out, "子命令：\n"); found {
+		var lines []string
+		for _, line := range strings.Split(after, "\n") {
+			if strings.TrimSpace(line) == "" {
+				break
+			}
+			lines = append(lines, line)
+		}
+		return lines
+	}
+	var lines []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  ") && strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// isGrouped reports whether a page renders group headers: at least one direct child declares Group.
+func isGrouped(spec *help.Spec) bool {
+	for _, child := range spec.Children {
+		childSpec, ok := help.Lookup(commandHelp, spec.Path+" "+child)
+		if ok && childSpec.Group != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // blockChildren parses the 子命令 block: from its heading to the first empty line.
@@ -121,8 +170,8 @@ func TestTopLevelHelpShape(t *testing.T) {
 		}
 	}
 	page := pages[0]
-	if len(page) > 2048 {
-		t.Errorf("top-level help is %d bytes, over 2048", len(page))
+	if len(page) > 3072 {
+		t.Errorf("top-level help is %d bytes, over 3072", len(page))
 	}
 	root, _ := help.Lookup(commandHelp, "")
 	for _, child := range root.Children {
@@ -529,6 +578,20 @@ func TestHelpIsRecognisedAtEveryPosition(t *testing.T) {
 	}
 }
 
+// The reference topic works end to end: one word opens it, a second word is a usage error (v77).
+func TestReferencePage(t *testing.T) {
+	stdout, stderr, status := runCaptured(t, "help", "reference")
+	if status != 0 || stderr != "" {
+		t.Fatalf("help reference: status %d, stderr %q", status, stderr)
+	}
+	if !strings.HasPrefix(stdout, "skmr 完整参考 · ") {
+		t.Errorf("help reference does not start with the reference heading:\n%s", stdout)
+	}
+	if _, _, status := runCaptured(t, "help", "reference", "extra"); status != 2 {
+		t.Errorf("help reference extra: status %d, want 2", status)
+	}
+}
+
 // T15: a bare group does nothing, so it is a usage error with the table on stderr.
 func TestBareGroupsPrintTheTableToStderr(t *testing.T) {
 	t.Setenv(config.ServerEnv, "http://127.0.0.1:1")
@@ -543,13 +606,27 @@ func TestBareGroupsPrintTheTableToStderr(t *testing.T) {
 		if stdout != "" {
 			t.Errorf("%v wrote to stdout: %q", words, stdout)
 		}
-		// The root's list is headed 命令：; every group's is 子命令：. Both are the table — what the
-		// test refuses is a bare word answered with nothing or with a page of prose.
-		heading := "子命令："
+		// The root's list is headed 命令：; an ungrouped group's is 子命令：; a grouped page (v77)
+		// has group headers instead. All three are the table — what the test refuses is a bare word
+		// answered with nothing or with a page of prose.
 		if len(words) == 0 {
-			heading = "命令："
+			if !strings.Contains(stderr, "命令：") {
+				t.Errorf("%v printed no command table:\n%s", words, stderr)
+			}
+			continue
 		}
-		if !strings.Contains(stderr, heading) {
+		path := strings.Join(words, " ")
+		spec, ok := help.Lookup(commandHelp, path)
+		if !ok {
+			t.Fatalf("%q has no declaration", path)
+		}
+		if len(spec.Children) > 0 && isGrouped(spec) {
+			if !strings.Contains(stderr, "共 ") {
+				t.Errorf("%v printed no count line:\n%s", words, stderr)
+			}
+			continue
+		}
+		if !strings.Contains(stderr, "子命令：") {
 			t.Errorf("%v printed no command table:\n%s", words, stderr)
 		}
 	}

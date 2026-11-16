@@ -186,7 +186,7 @@ type IssueDetail struct {
 	// ADR 0181's text limits, in code points; zero means the server did not say.
 	ActualCodePoints int64
 	LimitCodePoints  int64
-	// v76's skill quotas count entries; zero means the server did not say (ADR 0214).
+	// v76's skill quotas count entries; zero means the server did not say (ADR 0215).
 	ActualCount int64
 	LimitCount  int64
 }
@@ -218,14 +218,14 @@ func (e *ServerError) Error() string {
 	}
 	// v76: the two skill ceilings. The numbers come from the refusal, never from a constant here —
 	// they are due to become per-tier, so a copy in the client would be wrong the day that ships
-	// (ADR 0214). Which pool is full travels in the detail's `issue`.
+	// (ADR 0215). Which pool is full travels in the detail's `issue`.
 	if e.Code == "skill_quota_exceeded" {
 		if sentence := quotaSentence(e.DetailList); sentence != "" {
 			return sentence
 		}
 		// No counts means an older server. Falling through to its own message is what the console
 		// does with the same input; inventing a third sentence here would make the two surfaces
-		// disagree about the same refusal (ADR 0214).
+		// disagree about the same refusal (ADR 0215).
 	}
 	if e.Message != "" {
 		return e.Message
@@ -239,7 +239,7 @@ func (e *ServerError) Error() string {
 // quotaSentence is voice-spec §数量上限的两句话, filled with the counts the server sent.
 //
 // **Both sentences are the interface's, word for word** — the console renders the same two from
-// the same fields (ADR 0214). Empty means "this refusal did not say which ceiling or how full":
+// the same fields (ADR 0215). Empty means "this refusal did not say which ceiling or how full":
 // an older server, or a detail that lost its counts. The caller then falls back to the server's own
 // message, exactly as the console does, rather than inventing a third sentence — a refusal with no
 // numbers that names the wrong pool is worse than one in English (both counts are required because
