@@ -504,8 +504,8 @@ func versionNotResolvable(base, pin string) error {
 // materialize returns a directory holding the version, fetching it when the cache does not.
 //
 // **A cache miss is not an error.** The directory name is the digest plus the rule version it was
-// written under (see `cacheDirName`), so a hit is a directory that exists with a `SKILL.md` in it;
-// anything else is fetched again. Nothing is ever removed (ADR 0101) — a stale or half-written
+// written under (see `cacheDirName`), so a hit is a directory whose `.skillmaster-run.json` names
+// this digest and rule; anything else is fetched again. Nothing is ever removed (ADR 0101) — a stale or half-written
 // directory is named in the error instead.
 //
 // **The fetch carries the digest it was resolved for.** Asking for "whatever is current" a second
@@ -514,15 +514,13 @@ func versionNotResolvable(base, pin string) error {
 // it. The answer is checked against the digest as well, because the pin is a request rather than a
 // promise.
 func materialize(ctx context.Context, base, digest string, opts runOptions) (string, error) {
-	pinned := base + "@sha256:" + digest
-
 	if opts.noCache {
 		parent, err := os.MkdirTemp("", config.Name+"-run-")
 		if err != nil {
 			return "", fmt.Errorf("创建临时目录：%w", err)
 		}
 		target := filepath.Join(parent, "skill")
-		if err := fetchPinned(ctx, pinned, digest, target); err != nil {
+		if err := fetchScripts(ctx, base, digest, target); err != nil {
 			return "", unableToFetch(err)
 		}
 		return target, nil
@@ -548,17 +546,17 @@ func materialize(ctx context.Context, base, digest string, opts runOptions) (str
 		}
 	}
 	target := filepath.Join(root, cacheDirName(digest))
-	if hasSkillFile(target) {
+	if hasRunMarker(target, digest) {
 		return target, nil
 	}
 	if _, err := os.Stat(target); err == nil {
-		return "", fmt.Errorf("%s 已存在但没有 SKILL.md（上次下载可能中断）。"+
+		return "", fmt.Errorf("%s 已存在但没有本版缓存标记（上次取回可能中断，或这是旧版缓存）。"+
 			"确认后请自行删掉它，或加 --no-cache 换一个临时目录。", target)
 	}
-	if err := fetchPinned(ctx, pinned, digest, target); err != nil {
+	if err := fetchScripts(ctx, base, digest, target); err != nil {
 		// Two runs of the same version at once unpack into two staging directories and race to
 		// rename; the loser sees a non-empty target. The winner's copy is the answer, not a failure.
-		if hasSkillFile(target) {
+		if hasRunMarker(target, digest) {
 			return target, nil
 		}
 		return "", unableToFetch(err)
@@ -623,11 +621,6 @@ type archiveMismatch struct {
 
 func (m archiveMismatch) Error() string {
 	return m.message
-}
-
-func fetchPinned(ctx context.Context, pinned, digest, target string) error {
-	_, _, _, err := fetchVersion(ctx, pinned, target, false, digest)
-	return err
 }
 
 // isDigest is the shape check before a digest is used as a directory name.
@@ -855,10 +848,6 @@ func workingDirectory(skillDir, requested string) (string, error) {
 	return skillDir, nil
 }
 
-func hasSkillFile(dir string) bool {
-	return isFile(filepath.Join(dir, "SKILL.md"))
-}
-
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
@@ -871,13 +860,15 @@ func cacheKey(digest string) string {
 	return digest
 }
 
-// cacheRuleVersion is the executable-bit rule the directories under the cache were written with.
+// cacheRuleVersion is the rule the directories under the cache were written with.
 //
 // **A digest names the file bytes, not their permissions** (ADR 0166): the bit is derived from the
-// path, so a change to that rule delivers the same digest with different modes. Directories written
-// under an older rule are a miss, not a hit — nothing removes a cache (ADR 0101), so a 0644 script
-// cached before the rule changed would stay unrunnable for as long as the directory exists.
-const cacheRuleVersion = 2
+// path, so a change to that rule delivers the same digest with different modes. Since v78 the rule
+// also covers the fetch scope — a directory holds `scripts/` only (ADR 0217) — and the marker that
+// replaces `SKILL.md` as the hit test. Directories written under an older rule are a miss, not a
+// hit: nothing removes a cache (ADR 0101), so an `-r2` tree would otherwise be reused as if it had
+// been written by this rule.
+const cacheRuleVersion = 3
 
 func cacheDirName(digest string) string {
 	return fmt.Sprintf("%s-r%d", cacheKey(digest), cacheRuleVersion)

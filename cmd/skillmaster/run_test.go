@@ -1,9 +1,8 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +15,41 @@ import (
 	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
 	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pins"
 )
+
+// runFetchStub answers `run`'s two fetch shapes for one pinned version: the manifest and each
+// file's bytes. Since v78 `run` no longer takes the archive, so a test that needs the fetch
+// delegates here and keeps its own handler for metadata and leases.
+func runFetchStub(t *testing.T, w http.ResponseWriter, r *http.Request, digest string,
+	files map[string]string) bool {
+	t.Helper()
+	if !strings.Contains(r.URL.Path, "/versions/sha256:") {
+		return false
+	}
+	if strings.HasSuffix(r.URL.Path, "/files") {
+		w.Header().Set("ETag", `"sha256:`+digest+`"`)
+		var rows []string
+		for relpath, body := range files {
+			sum := sha256.Sum256([]byte(body))
+			rows = append(rows, fmt.Sprintf(
+				`{"relpath":%q,"sha256":"sha256:%x","size":%d,"is_binary":false}`,
+				relpath, sum, len(body)))
+		}
+		_, _ = w.Write([]byte(`{"files":[` + strings.Join(rows, ",") + `]}`))
+		return true
+	}
+	const marker = "/files/"
+	index := strings.Index(r.URL.Path, marker)
+	if index < 0 {
+		return false
+	}
+	body, ok := files[r.URL.Path[index+len(marker):]]
+	if !ok {
+		http.NotFound(w, r)
+		return true
+	}
+	_, _ = w.Write([]byte(body))
+	return true
+}
 
 // **Everything after `--` belongs to the child**, including flags the child itself understands.
 // Dropping them here would run a different command than the author's SKILL.md told the agent to run.
@@ -348,31 +382,17 @@ func TestRunSaysTheVersionIsGoneWithoutProtocolDetails(t *testing.T) {
 }
 
 // **A5 end to end**: the draft's own `scripts/` file is what runs. Resolution through the author
-// plane, the archive fetch, the cache, the consent, the path rewrite and the child process, with a
+// plane, the manifest and per-file fetch, the cache, the consent, the path rewrite and the child
+// process, with a
 // script only the draft contains — the case that motivated the version (a draft's script had never
 // been executed before it shipped).
 func TestRunExecutesAScriptFromTheDraft(t *testing.T) {
 	withTempHome(t)
 	digest := strings.Repeat("ef", 32)
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for _, entry := range []struct{ name, body string }{
-		{"SKILL.md", "---\nname: hello\ndescription: d\n---\n# hello\n"},
-		{"scripts/hello.sh", "#!/bin/sh\necho hello-from-draft\n"},
-		{".skillmaster/metadata.json", `{"schema_version":1,"version":{"name":"草稿"}}`},
-	} {
-		file, err := writer.Create(entry.name)
-		if err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
-		if _, err := file.Write([]byte(entry.body)); err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
+	files := map[string]string{
+		"SKILL.md":         "---\nname: hello\ndescription: d\n---\n# hello\n",
+		"scripts/hello.sh": "#!/bin/sh\necho hello-from-draft\n",
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("building the fixture: %v", err)
-	}
-	archive := buffer.Bytes()
 
 	pointAtServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -393,10 +413,7 @@ func TestRunExecutesAScriptFromTheDraft(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/author/skills/me/hello/versions/JD0T518T"):
 			_, _ = w.Write([]byte(`{"skill":{"name":"hello"},"version":{"digest":"sha256:` +
 				digest + `"}}`))
-		case strings.Contains(r.URL.Path, "/versions/sha256:") && strings.HasSuffix(r.URL.Path, "/archive"):
-			w.Header().Set("Content-Type", "application/zip")
-			w.Header().Set("ETag", `"sha256:`+digest+`"`)
-			_, _ = w.Write(archive)
+		case runFetchStub(t, w, r, digest, files):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -561,24 +578,10 @@ func TestRunProbesTheLeaseWhenTheSkillWasNeverPublished(t *testing.T) {
 func TestRunKeepsRunningWhenTheLeaseIsRefused(t *testing.T) {
 	withTempHome(t)
 	digest := strings.Repeat("78", 32)
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for _, entry := range []struct{ name, body string }{
-		{"SKILL.md", "---\nname: hello\ndescription: d\n---\n"},
-		{"scripts/hello.sh", "#!/bin/sh\necho hello-from-draft\n"},
-	} {
-		file, err := writer.Create(entry.name)
-		if err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
-		if _, err := file.Write([]byte(entry.body)); err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
+	files := map[string]string{
+		"SKILL.md":         "---\nname: hello\ndescription: d\n---\n",
+		"scripts/hello.sh": "#!/bin/sh\necho hello-from-draft\n",
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("building the fixture: %v", err)
-	}
-	archive := buffer.Bytes()
 
 	pointAtServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -592,9 +595,7 @@ func TestRunKeepsRunningWhenTheLeaseIsRefused(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/author/skills/me/hello/versions/JD0T518T"):
 			_, _ = w.Write([]byte(`{"skill":{"name":"hello"},"version":{"digest":"sha256:` +
 				digest + `"}}`))
-		case strings.HasSuffix(r.URL.Path, "/archive"):
-			w.Header().Set("ETag", `"sha256:`+digest+`"`)
-			_, _ = w.Write(archive)
+		case runFetchStub(t, w, r, digest, files):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -681,24 +682,10 @@ func TestRunDoesNotCallAnInsufficientScopeAMissingVersion(t *testing.T) {
 func TestRunInjectsTheLeaseForAPublishedSkillsDraft(t *testing.T) {
 	withTempHome(t)
 	digest := strings.Repeat("9a", 32)
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for _, entry := range []struct{ name, body string }{
-		{"SKILL.md", "---\nname: hello\ndescription: d\n---\n"},
-		{"scripts/hello.sh", "#!/bin/sh\necho token=$TOKEN\n"},
-	} {
-		file, err := writer.Create(entry.name)
-		if err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
-		if _, err := file.Write([]byte(entry.body)); err != nil {
-			t.Fatalf("building the fixture: %v", err)
-		}
+	files := map[string]string{
+		"SKILL.md":         "---\nname: hello\ndescription: d\n---\n",
+		"scripts/hello.sh": "#!/bin/sh\necho token=$TOKEN\n",
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("building the fixture: %v", err)
-	}
-	archive := buffer.Bytes()
 
 	pointAtServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -717,9 +704,7 @@ func TestRunInjectsTheLeaseForAPublishedSkillsDraft(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/author/skills/me/hello/versions/JD0T518T"):
 			_, _ = w.Write([]byte(`{"skill":{"name":"hello"},"version":{"digest":"sha256:` +
 				digest + `"}}`))
-		case strings.HasSuffix(r.URL.Path, "/archive"):
-			w.Header().Set("ETag", `"sha256:`+digest+`"`)
-			_, _ = w.Write(archive)
+		case runFetchStub(t, w, r, digest, files):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)

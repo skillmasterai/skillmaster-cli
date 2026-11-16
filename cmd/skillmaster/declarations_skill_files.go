@@ -21,12 +21,13 @@ var skillFileSpecs = []*help.Spec{
 		},
 		Output: "单文件：写到 -o 指定的路径（省略时是当前目录的 basename），成功信息与 sha256 打在 stderr；" +
 			"先写临时文件、成功后再改名，中断不会留下半份。整版（--all）：写进一个不存在或空的目录，" +
-			"连同 .skillmaster/metadata.json 旁车；目录非空时拒绝。整版把包读进内存，上限约 17 MiB；" +
+			"连同 .skillmaster/metadata.json 旁车；目录非空时拒绝，门槛是「写入」档。" +
+			"整版把包读进内存，上限约 17 MiB；" +
 			"更大的版本用单文件形态逐个取。任意类型；只想在终端看一眼用 skill cat。\n" +
 			versionRuleLine,
 		Failures: []help.Failure{
 			{Code: "not_found", Summary: "地址或这一版找不到", Next: "用 skmr version list 核对"},
-			{Code: "insufficient_permission", Summary: "这一档读不了这个文件", Next: "请所有者给你 browse 及以上"},
+			{Code: "insufficient_permission", Summary: "这一档取不了要的东西", Next: "单文件「调用」（草稿「写入」）；整版「写入」及以上"},
 			{Code: "usage", Summary: "整版的目标目录不为空", Next: "换一个空目录"},
 		},
 		Examples: []string{

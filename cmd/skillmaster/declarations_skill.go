@@ -233,7 +233,7 @@ var skillSpecs = []*help.Spec{
 		Failures: []help.Failure{
 			{Code: "not_found", Summary: "地址或这一版找不到", Next: "用 skmr version list 核对"},
 			{Code: "invalid_version_state", Summary: "这一版不能导出（已丢弃）", Next: "用 skmr version list 换一版"},
-			{Code: "insufficient_permission", Summary: "需要 browse 档", Next: "请所有者给你 browse 及以上"},
+			{Code: "insufficient_permission", Summary: "这个检查要能看文件（「浏览」）、读整包（「写入」）", Next: "请所有者给你写入及以上，或用 skill ls / read 逐文件看"},
 		},
 		Examples: []string{"skmr skill check dev/pdf-tools", "skmr skill check dev/pdf-tools@a1b2c3"},
 		Parent:   "skill", Next: "断链：线上版本先 skmr draft create <地址> --name <名> 起稿（已有草稿就改那一份）；已经是草稿就直接 skmr skill edit <地址>@<版本码> <路径> --old <目标> --new <新>", Exits: exitsWithCredential,

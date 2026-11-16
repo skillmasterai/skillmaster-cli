@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -152,7 +153,44 @@ func fetchVersion(ctx context.Context, address, target string,
 // and keeps the transport's wording for everything else. v9 TD §接口 4 asks for exactly that: the
 // mapping 401/403/404 already get, plus a Chinese sentence for a state the product refuses to serve.
 func downloadRefusal(err error) error {
+	// **The application's 403 here is the rung, not the scope** (ADR 0216): the route answers
+	// `forbidden` with no challenge, and the way out is a single file, not a re-authorization. The
+	// same code also covers a relation that cannot even browse; that caller is told the rung that
+	// would work for the whole package, and the single-file advice still works for them.
+	if message, ok := rungRefusal(err,
+		"整包导出需要「写入」档；要单个文件用 skmr skill get <地址> <路径>。"); ok {
+		return message
+	}
 	return versionRefusal(err)
+}
+
+// rungRefusal turns one specific 403 into the sentence the caller can act on. It is separate from
+// the generic refusal because the same status on a different route means something else.
+//
+// **A 403 from the application is `*api.Denial`, not `*api.ServerError`** — `statusError` sends
+// every 403 there so the caller can read the reason and the challenge. Matching on the code rather
+// than on the status is also what keeps a proxy's bare 403 (no envelope, no code) and a scope
+// failure (`insufficient_scope`, which asks for a different credential) away from this sentence.
+func rungRefusal(err error, sentence string) (error, bool) {
+	var denial *api.Denial
+	if errors.As(err, &denial) {
+		return rungRefusalCode(denial.Code, sentence)
+	}
+	// A server that answered 403 with the envelope read as a `ServerError` is not a shape this
+	// client produces today; keeping the branch makes the sentence survive a future caller that
+	// passes one, and costs one `errors.As`.
+	var server *api.ServerError
+	if errors.As(err, &server) && server.Status == http.StatusForbidden {
+		return rungRefusalCode(server.Code, sentence)
+	}
+	return nil, false
+}
+
+func rungRefusalCode(code, sentence string) (error, bool) {
+	if code == api.Forbidden {
+		return errors.New(sentence), true
+	}
+	return nil, false
 }
 
 // splitWholeVersionAddress separates the skill from the pin, validating neither pin's grammar nor its
