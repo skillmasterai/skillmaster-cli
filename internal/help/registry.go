@@ -74,6 +74,11 @@ var codes = []Code{
 
 	// Membership and tags.
 	{Name: "skill_not_joinable", Text: "这个 skill 现在加入不了", Exit: 1},
+	// v76 (ADR 0215): one of the two quantity ceilings. Neutral on purpose — the same code means
+	// the namespace ceiling on create/copy/submit/restore and the library ceiling on join/accept,
+	// so this line must not name either pool. The full sentence with both numbers, and which pool
+	// it was, comes from the refusal's `details`.
+	{Name: "skill_quota_exceeded", Text: "skill 数量到上限了", Exit: 1},
 	{Name: "skill_offline_pending", Text: "这个 skill 正在下线中，不能再入库", Exit: 1},
 	{Name: "library_reference_missing", Text: "库里没有这个引用", Exit: 1},
 	{Name: "skill_not_in_library", Text: "这个 skill 不在你的库里", Exit: 1},

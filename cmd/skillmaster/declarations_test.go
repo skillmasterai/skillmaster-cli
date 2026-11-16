@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -69,8 +71,13 @@ func TestEveryHelpFitsTheBudget(t *testing.T) {
 			t.Errorf("%q renders nothing", spec.Path)
 			continue
 		}
-		if len(text) > 2048 {
-			t.Errorf("%q help is %d bytes, want at most 2048", spec.Path, len(text))
+		limit := 2048
+		if spec.PureGroup && len(spec.Children) > 0 {
+			// A group page grows with the command surface; a leaf does not (v77).
+			limit = 3072
+		}
+		if len(text) > limit {
+			t.Errorf("%q help is %d bytes, want at most %d", spec.Path, len(text), limit)
 		}
 		if ansi.MatchString(text) {
 			t.Errorf("%q help has ANSI colour", spec.Path)
@@ -194,4 +201,338 @@ func TestTheUnauthenticatedNextStepAgreesWithTheRuntimeSentence(t *testing.T) {
 	if keySentence, _ := refusalMessage(&api.Refusal{Code: "unauthenticated"}, true); !strings.Contains(keySentence, "/account/keys") {
 		t.Errorf("the key sentence omits the console address: %s", keySentence)
 	}
+}
+
+// groupThreshold is the point where a flat list stops being scannable: at this many verbs a pure
+// group page must declare groups. The renderer does not check it — grouping is a declaration
+// fact — so the test is the only place the rule lives (v77).
+const groupThreshold = 20
+
+func TestGroupedPagesFitTheThreshold(t *testing.T) {
+	for _, spec := range commandHelp.Specs() {
+		if !spec.PureGroup || spec.Path == "" || len(spec.Children) == 0 {
+			continue
+		}
+		if problem := groupViolation(commandHelp, spec, groupThreshold); problem != "" {
+			t.Errorf("%s: %s", spec.Path, problem)
+		}
+	}
+}
+
+// groupViolation returns "" when the page's grouping obeys the rules, or a sentence saying which
+// one it breaks. It is a pure function so the threshold can be exercised with synthetic catalogs.
+func groupViolation(cat help.Catalog, spec *help.Spec, threshold int) string {
+	grouped, ungrouped := 0, 0
+	seen := map[string]bool{}
+	for _, child := range spec.Children {
+		childSpec, ok := help.Lookup(cat, spec.Path+" "+child)
+		if !ok {
+			// A child with no declaration cannot be grouped; counting it as ungrouped keeps the
+			// "must group at 20" rule from being bypassed by a synthetic tree.
+			ungrouped++
+			continue
+		}
+		if childSpec.Group == "" {
+			ungrouped++
+			continue
+		}
+		grouped++
+		seen[childSpec.Group] = true
+	}
+	if grouped > 0 && ungrouped > 0 {
+		return "mixes grouped and ungrouped verbs"
+	}
+	if len(spec.Children) >= threshold && grouped == 0 {
+		return fmt.Sprintf("has %d verbs but no groups; at %d it must group", len(spec.Children), threshold)
+	}
+	if grouped > 0 && len(seen) < 2 {
+		return "has a single group; a group header for one group adds lines without adding structure"
+	}
+	return ""
+}
+
+// specCatalog is the minimum Catalog a threshold test needs: a set of specs and no topics.
+type specCatalog []*help.Spec
+
+func (c specCatalog) Specs() []*help.Spec             { return c }
+func (c specCatalog) Topic(string) (help.Topic, bool) { return help.Topic{}, false }
+func (c specCatalog) Topics() []help.Topic            { return nil }
+
+func TestGroupThresholdRules(t *testing.T) {
+	build := func(n int, groupOf func(int) string) (specCatalog, *help.Spec) {
+		parent := &help.Spec{Path: "skill", Summary: "单个 skill 的动词", PureGroup: true}
+		specs := specCatalog{parent}
+		for i := 0; i < n; i++ {
+			name := fmt.Sprintf("v%02d", i)
+			parent.Children = append(parent.Children, name)
+			specs = append(specs, &help.Spec{Path: "skill " + name, Summary: "动作", Parent: "skill", Group: groupOf(i)})
+		}
+		return specs, parent
+	}
+	cases := []struct {
+		name  string
+		n     int
+		group func(int) string
+		want  string
+	}{
+		{"20 ungrouped fails", 20, func(int) string { return "" }, "must group"},
+		{"19 ungrouped passes", 19, func(int) string { return "" }, ""},
+		{"mixed fails", 20, func(i int) string {
+			if i%2 == 0 {
+				return "甲"
+			}
+			return ""
+		}, "mixes"},
+		{"two groups passes", 20, func(i int) string {
+			if i%2 == 0 {
+				return "甲"
+			}
+			return "乙"
+		}, ""},
+		{"one group fails", 20, func(int) string { return "甲" }, "single group"},
+	}
+	for _, tc := range cases {
+		cat, spec := build(tc.n, tc.group)
+		got := groupViolation(cat, spec, groupThreshold)
+		if tc.want == "" && got != "" {
+			t.Errorf("%s: got %q, want none", tc.name, got)
+		}
+		if tc.want != "" && !strings.Contains(got, tc.want) {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestGroupPagesStateTheirSize(t *testing.T) {
+	for _, spec := range commandHelp.Specs() {
+		if !spec.PureGroup || spec.Path == "" || len(spec.Children) == 0 {
+			continue
+		}
+		text := help.Render(commandHelp, spec.Path)
+		first, _, _ := strings.Cut(text, "\n")
+		if !strings.Contains(first, fmt.Sprintf("共 %d 个动作", len(spec.Children))) {
+			t.Errorf("%q's first line does not state its size: %q", spec.Path, first)
+		}
+	}
+	top := help.RenderTop(commandHelp)
+	root, _ := help.Lookup(commandHelp, "")
+	first, _, _ := strings.Cut(top, "\n")
+	if !strings.Contains(first, fmt.Sprintf("共 %d 个顶层项", len(root.Children))) {
+		t.Errorf("the top-level first line does not state its size: %q", first)
+	}
+}
+
+// sixGroups is the spec's grouping table, written out here so the test does not derive its
+// expectation from the same Group field it is guarding (v77 technical-design §接口 1).
+var sixGroups = map[string][]string{
+	"读与用":          {"invoke", "versions", "show", "license", "open"},
+	"文件":           {"ls", "find", "stat", "head", "tail", "read", "cat", "wc", "grep", "check", "get"},
+	"写与提交":         {"write", "edit", "rm", "mv", "cp", "submit"},
+	"库与共享":         {"create", "copy", "join", "leave", "share", "shares", "role", "unshare", "request"},
+	"分类、标签与我的适用场景": {"tags", "tag", "category", "my-when-to-use"},
+	"生命周期":         {"restore", "delete", "offline", "online", "visibility"},
+}
+
+var sixGroupOrder = []string{"读与用", "文件", "写与提交", "库与共享", "分类、标签与我的适用场景", "生命周期"}
+
+func TestGroupedPagesNameTheirGroups(t *testing.T) {
+	text := help.Render(commandHelp, "skill")
+	first, _, _ := strings.Cut(text, "\n")
+	total := 0
+	var parts []string
+	for _, group := range sixGroupOrder {
+		total += len(sixGroups[group])
+		parts = append(parts, fmt.Sprintf("%s %d", group, len(sixGroups[group])))
+		if !strings.Contains(text, fmt.Sprintf("%s (%d)", group, len(sixGroups[group]))) {
+			t.Errorf("the page does not head group %q with (%d)", group, len(sixGroups[group]))
+		}
+	}
+	wantFirst := fmt.Sprintf("单个 skill 的动词 · 共 %d 个动作，%d 组：%s", total, len(sixGroupOrder), strings.Join(parts, " · "))
+	if first != wantFirst {
+		t.Errorf("the first line = %q, want %q", first, wantFirst)
+	}
+	order, members := renderedGroups(text)
+	if !equal(order, sixGroupOrder) {
+		t.Errorf("rendered group order = %v, want %v", order, sixGroupOrder)
+	}
+	for _, group := range sixGroupOrder {
+		if !equal(members[group], sixGroups[group]) {
+			t.Errorf("group %q = %v, want %v", group, members[group], sixGroups[group])
+		}
+	}
+}
+
+// renderedGroups parses a grouped page into its group order and members: a line at column 0 ending
+// in "(n)" is a group header; the indented lines after it are its verbs.
+func renderedGroups(text string) (order []string, members map[string][]string) {
+	members = map[string][]string{}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "  ") {
+			fields := strings.Fields(line)
+			if len(fields) > 0 && len(order) > 0 {
+				members[order[len(order)-1]] = append(members[order[len(order)-1]], fields[0])
+			}
+			continue
+		}
+		if strings.HasSuffix(line, ")") {
+			if at := strings.LastIndex(line, " ("); at > 0 {
+				order = append(order, line[:at])
+			}
+		}
+	}
+	return order, members
+}
+
+// TestExitLinesAreRunnable checks the page's own exits resolve: the detail line to the verb's own
+// command, and the reference line to the reference topic (v77).
+func TestExitLinesAreRunnable(t *testing.T) {
+	for _, spec := range commandHelp.Specs() {
+		if !spec.PureGroup || spec.Path == "" || len(spec.Children) == 0 || !isGrouped(spec) {
+			continue
+		}
+		text := help.Render(commandHelp, spec.Path)
+		child := spec.Children[0]
+		detail, reference := false, false
+		for _, line := range strings.Split(text, "\n") {
+			switch {
+			case strings.HasPrefix(line, "逐条说明："):
+				detail = true
+				if !strings.Contains(line, "<子命令>") {
+					t.Errorf("%s: the detail exit does not name a verb placeholder: %q", spec.Path, line)
+				}
+				command := strings.ReplaceAll(strings.TrimPrefix(line, "逐条说明："), "<子命令>", child)
+				args := strings.Fields(strings.TrimPrefix(command, "skmr "))
+				got := help.Requested(commandHelp, args)
+				if got.Kind != help.KindCommand || got.Path != spec.Path+" "+child {
+					t.Errorf("%s: %q resolves to %+v, want command %q", spec.Path, command, got, spec.Path+" "+child)
+				}
+			case strings.HasPrefix(line, "完整参考："):
+				reference = true
+				command := strings.TrimPrefix(line, "完整参考：")
+				args := strings.Fields(strings.TrimPrefix(command, "skmr "))
+				if got := help.Requested(commandHelp, args); got.Kind != help.KindTopic || got.Topic != "reference" {
+					t.Errorf("%s: %q does not resolve to the reference topic: %+v", spec.Path, command, got)
+				}
+			}
+		}
+		if !detail || !reference {
+			t.Errorf("%s: the page does not carry both exits", spec.Path)
+		}
+	}
+	// An ungrouped page keeps the v16 shape plus the count line: no exits.
+	for _, spec := range commandHelp.Specs() {
+		if !spec.PureGroup || spec.Path == "" || len(spec.Children) == 0 || isGrouped(spec) {
+			continue
+		}
+		text := help.Render(commandHelp, spec.Path)
+		if strings.Contains(text, "逐条说明：") || strings.Contains(text, "完整参考：") {
+			t.Errorf("%s is not grouped but carries the exits", spec.Path)
+		}
+	}
+}
+
+// TestReferenceStructure pins the generated reference's sections to the command tree: each
+// top-level section is headed by its name and executable count, in tree order (v77).
+func TestReferenceStructure(t *testing.T) {
+	text, ok := help.RenderTopic(commandHelp, "reference")
+	if !ok {
+		t.Fatal("the reference topic is not registered")
+	}
+	root, _ := help.Lookup(commandHelp, "")
+	var wantOrder []string
+	for _, top := range root.Children {
+		topSpec, ok := help.Lookup(commandHelp, top)
+		if !ok {
+			continue
+		}
+		want := countExecutable(topSpec)
+		if want == 0 {
+			continue
+		}
+		wantOrder = append(wantOrder, top)
+		if !strings.Contains(text, fmt.Sprintf("\n%s · %d 条命令\n", top, want)) {
+			t.Errorf("the reference does not head %q with %d commands", top, want)
+		}
+	}
+	// Section headers appear after the first line, at column 0, in tree order.
+	body := text[strings.Index(text, "\n")+1:]
+	var gotOrder []string
+	for _, line := range strings.Split(body, "\n") {
+		if line == "" || strings.HasPrefix(line, " ") {
+			continue
+		}
+		if at := strings.LastIndex(line, " · "); at > 0 && strings.HasSuffix(line, " 条命令") {
+			gotOrder = append(gotOrder, line[:at])
+		}
+	}
+	if !equal(gotOrder, wantOrder) {
+		t.Errorf("reference section order = %v, want %v", gotOrder, wantOrder)
+	}
+}
+
+func countExecutable(spec *help.Spec) int {
+	return countExecutableSeen(spec, map[string]bool{})
+}
+
+func countExecutableSeen(spec *help.Spec, seen map[string]bool) int {
+	if seen[spec.Path] {
+		return 0
+	}
+	seen[spec.Path] = true
+	n := 0
+	if !spec.PureGroup {
+		n = 1
+	}
+	for _, child := range spec.Children {
+		if childSpec, ok := help.Lookup(commandHelp, spec.Path+" "+child); ok {
+			n += countExecutableSeen(childSpec, seen)
+		}
+	}
+	return n
+}
+
+// TestGroupedChildrenAgreeWithDeclarations checks the verb set: a verb declared but not rendered,
+// or rendered but not declared, fails here. Group membership is guarded separately by
+// TestGroupedPagesNameTheirGroups (v77).
+func TestGroupedChildrenAgreeWithDeclarations(t *testing.T) {
+	for _, spec := range commandHelp.Specs() {
+		if spec.Path == "" || len(spec.Children) == 0 || !isGrouped(spec) {
+			continue
+		}
+		text := help.Render(commandHelp, spec.Path)
+		got := listedChildren(text)
+		want := append([]string(nil), spec.Children...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if !equal(got, want) {
+			t.Errorf("%q renders %v, declares %v", spec.Path, got, want)
+		}
+	}
+}
+
+// TestReferenceCoversEveryCommand pins the generated reference to the declarations: every
+// executable path appears with its own usage line, so adding a command cannot leave the reference
+// behind (v77).
+func TestReferenceCoversEveryCommand(t *testing.T) {
+	text, ok := help.RenderTopic(commandHelp, "reference")
+	if !ok {
+		t.Fatal("the reference topic is not registered")
+	}
+	if !strings.Contains(text, fmt.Sprintf(" %d 条命令", wantCommandPaths)) {
+		t.Errorf("the reference does not state the command count:\n%s", firstLine(text))
+	}
+	for _, spec := range commandPaths(commandHelp) {
+		usage := spec.Usage
+		if usage == "" {
+			usage = "skmr " + spec.Path
+		}
+		if !strings.Contains(text, usage) {
+			t.Errorf("the reference does not cover %q", spec.Path)
+		}
+	}
+}
+
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	return line
 }

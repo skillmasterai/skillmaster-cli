@@ -6,6 +6,7 @@ import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
 var skillFileSpecs = []*help.Spec{
 	{
 		Path: "skill get", Summary: "取文件或整版到本地",
+		Group: "文件",
 		Usage: "skmr skill get <地址>@<版本> (<相对路径> | --all) [-o <本地路径>] " +
 			"[--into <目录>] [--overwrite]",
 		Flags: []help.Flag{

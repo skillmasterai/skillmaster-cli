@@ -318,6 +318,17 @@
       "body": "{\"error\":{\"code\":\"skill_not_joinable\",\"message\":\"no\"}}"
     },
     {
+      "code": "skill_quota_exceeded",
+      "argv": [
+        "skill",
+        "join",
+        "dev/x",
+        "--yes"
+      ],
+      "status": 409,
+      "body": "{\"error\":{\"code\":\"skill_quota_exceeded\",\"message\":\"full\",\"details\":[{\"field\":\"quota\",\"issue\":\"library\",\"actual_count\":500,\"limit_count\":500}]}}"
+    },
+    {
       "code": "skill_offline_pending",
       "argv": [
         "skill",

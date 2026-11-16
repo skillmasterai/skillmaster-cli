@@ -8,6 +8,7 @@ import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
 var skillSpecs = []*help.Spec{
 	{
 		Path: "skill invoke", Summary: "加载正文并钉住这一版",
+		Group: "读与用",
 		Usage: "skmr skill invoke <命名空间>/<名字>[@版本] [--offset <行号>]",
 		Flags: []help.Flag{{Name: "--offset", Value: "<行号>", Summary: "从正文第几行开始输出（头部照常打印）"}},
 		Args:  []help.Arg{{Name: "<命名空间>/<名字>[@版本]", Key: "address", Required: true}},
@@ -30,6 +31,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill ls", Summary: "看一层目录",
+		Group: "文件",
 		Usage: "skmr skill ls <命名空间>/<名字>[@版本] [<目录>] [-l] [-R]",
 		Flags: []help.Flag{
 			{Name: "-l", Summary: "带上类型与字节数"},
@@ -50,6 +52,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill find", Summary: "按名字找文件",
+		Group: "文件",
 		Usage: "skmr skill find <命名空间>/<名字>[@版本] <模式> [-i] [--path <路径>]",
 		Flags: []help.Flag{
 			{Name: "-i", Summary: "忽略大小写"},
@@ -69,6 +72,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill stat", Summary: "看路径的大小与类型",
+		Group: "文件",
 		Usage: "skmr skill stat <命名空间>/<名字>[@版本] <路径>... [--digest]",
 		Flags: []help.Flag{{Name: "--digest", Summary: "打完整 sha256"}},
 		Args: []help.Arg{
@@ -87,6 +91,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill head", Summary: "读开头几行",
+		Group: "文件",
 		Usage: "skmr skill head <命名空间>/<名字>[@版本] <相对路径> [-n <行数>]",
 		Flags: []help.Flag{{Name: "-n", Value: "<行数>", Summary: "要几行，默认 10"}},
 		Args: []help.Arg{
@@ -103,6 +108,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill tail", Summary: "读结尾几行",
+		Group: "文件",
 		Usage: "skmr skill tail <命名空间>/<名字>[@版本] <相对路径> [-n <行数>]",
 		Flags: []help.Flag{{Name: "-n", Value: "<行数>", Summary: "要几行，默认 10"}},
 		Args: []help.Arg{
@@ -119,6 +125,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill read", Summary: "读一个文件",
+		Group: "文件",
 		Usage: "skmr skill read <命名空间>/<名字>[@版本] <相对路径> [--offset <行号>] [--limit <行数>] [--raw]",
 		Flags: []help.Flag{
 			{Name: "--offset", Value: "<行号>", Summary: "从第几行开始读（1 起）"},
@@ -146,6 +153,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill cat", Summary: "一次读多个文件",
+		Group: "文件",
 		Usage: "skmr skill cat <命名空间>/<名字>[@版本] <相对路径>...",
 		Args: []help.Arg{
 			{Name: "<命名空间>/<名字>[@版本]", Key: "address", Required: true},
@@ -161,6 +169,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill wc", Summary: "数行、词、字节",
+		Group: "文件",
 		Usage: "skmr skill wc <命名空间>/<名字>[@版本] [相对路径...] [-l] [-w] [-c]",
 		Flags: []help.Flag{
 			{Name: "-l", Summary: "只数行"},
@@ -178,6 +187,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill grep", Summary: "在某一版里搜文本",
+		Group: "文件",
 		Usage: "skmr skill grep <命名空间>/<名字>[@版本] [<pattern>] [-F] [-i] [-n] [-l] " +
 			"[-C <n> | -A <n> | -B <n>] [-e <pattern>...] [--exclude <glob>...] [--max-count <n>] [--path <路径>]",
 		Flags: []help.Flag{
@@ -214,6 +224,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill check", Summary: "查这一版的相对引用",
+		Group: "文件",
 		Usage: "skmr skill check <命名空间>/<名字>[@版本]",
 		Args:  []help.Arg{{Name: "<命名空间>/<名字>[@版本]", Key: "address", Required: true}},
 		Output: "每个断链一行：`路径:行号: 目标 不在这一版里`，走 stdout；全部成立时 stdout 不打印任何东西（版本注记走 stderr）。退出 1 表示有断链。\n" +
@@ -229,6 +240,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill write", Summary: "整份写一个文件",
+		Group: "写与提交",
 		Usage: "skmr skill write <地址>@<版本码> <相对路径|目录/> [--from <本地文件>...] [--overwrite] [--allow-empty]",
 		Flags: []help.Flag{
 			{Name: "--from", Value: "<本地文件>", Summary: "内容从这个本地文件读；可重复，用于多个文件"},
@@ -262,6 +274,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill edit", Summary: "替换一处或多处文本",
+		Group: "写与提交",
 		Usage: "skmr skill edit <地址>@<版本码> <相对路径> " +
 			"(--old <文本> | --old-file <文件|->) [--new <文本> | --new-file <文件|->] " +
 			"[--replace-all] [--regex] | --stdin-json",
@@ -293,6 +306,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill rm", Summary: "删掉草稿里的文件",
+		Group: "写与提交",
 		Usage: "skmr skill rm <地址>@<版本码> <相对路径>...",
 		Args: []help.Arg{
 			{Name: "<地址>@<版本码>", Key: "address", Required: true},
@@ -307,6 +321,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill mv", Summary: "移动草稿里的文件",
+		Group: "写与提交",
 		Usage: "skmr skill mv <地址>@<版本码> <from> <to>",
 		Args: []help.Arg{
 			{Name: "<地址>@<版本码>", Key: "address", Required: true},
@@ -322,6 +337,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill cp", Summary: "复制草稿里的文件",
+		Group: "写与提交",
 		Usage: "skmr skill cp <命名空间>/<名字>@<版本码> <from> <to>",
 		Args: []help.Arg{
 			{Name: "<命名空间>/<名字>@<版本码>", Key: "address", Required: true},
@@ -337,6 +353,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill versions", Summary: "能调用哪些版本",
+		Group:  "读与用",
 		Usage:  "skmr skill versions <命名空间>/<名字>",
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
 		Output: "一版一个地址行；下面可缩进两行：状态与日期、版本说明。末尾一行总数，全部走 stdout。",
@@ -348,6 +365,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill submit", Summary: "提交一版成草稿",
+		Group: "写与提交",
 		Usage: "skmr skill submit [名字 | 目录] [--name <版本名称>] [--note <说明>] [--release major|minor|patch] [--to <命名空间>/<名字>]",
 		Flags: []help.Flag{
 			{Name: "--name", Value: "<版本名称>", Summary: "这一版的名称"},
@@ -364,12 +382,14 @@ var skillSpecs = []*help.Spec{
 			{Code: "draft_name_too_long", Summary: "名称太长", Next: "缩短 --name"},
 			{Code: "note_too_long", Summary: "说明太长", Next: "缩短 --note"},
 			{Code: "internal_error", Summary: "服务端内部错误", Next: "稍后重试；一直出现就报告"},
+			{Code: "skill_quota_exceeded", Summary: "新名字会让命名空间的 skill 超过上限", Next: "删除不再使用的 skill；给已有的 skill 提交新版本不算新增"},
 		},
 		Examples: []string{"skmr skill submit . --name 首版", "skmr skill submit ./my-skill --name 从本机导入"},
 		Parent:   "skill", Next: "在浏览器里点上线：skmr version open <地址>@<版本码> --sub actions", Exits: exitsWithCredential,
 	},
 	{
 		Path: "skill share", Summary: "邀请某个人共享",
+		Group: "库与共享",
 		Usage: "skmr skill share <命名空间>/<名字> --to <用户名> [--role invoke|browse|write|maintain|admin]",
 		Flags: []help.Flag{
 			{Name: "--to", Value: "<用户名>", Summary: "邀请谁"},
@@ -387,6 +407,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill create", Summary: "新建一个 skill",
+		Group: "库与共享",
 		Usage: "skmr skill create <名字> --description <描述> [--name <版本名称>] [--json]",
 		Flags: []help.Flag{
 			{Name: "--description", Value: "<描述>", Summary: "这个 skill 做什么"},
@@ -397,12 +418,14 @@ var skillSpecs = []*help.Spec{
 		JSONFields: []string{"namespace", "name", "version_code", "version_name", "state"},
 		Failures: []help.Failure{
 			{Code: "skill_already_exists", Summary: "这个名字已被占用", Next: "换一个名字"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{"skmr skill create pdf-tools --description 处理 PDF 的工具"},
 		Parent:   "skill", Exits: exitsWithCredential,
 	},
 	{
 		Path: "skill copy", Summary: "把别人的一版复制成我的",
+		Group: "库与共享",
 		Usage: "skmr skill copy <命名空间>/<名字>[@版本] --name <新名字> [--json]",
 		Flags: []help.Flag{
 			{Name: "--name", Value: "<新名字>", Summary: "复制后的新 skill 名字，必填"},
@@ -422,6 +445,7 @@ var skillSpecs = []*help.Spec{
 			{Code: "skill_offline", Summary: "源已下线", Next: "等作者恢复服务"},
 			{Code: "invalid_name", Summary: "新名字不能用作地址", Next: "1–64 个小写字母、数字和连字符"},
 			{Code: "name_not_rewritable", Summary: "源 SKILL.md 不能安全改名", Next: "用原名复制，再在编辑器里改"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{
 			"skmr skill copy dev/pdf-tools --name pdf-tools-copy",
@@ -431,6 +455,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill shares", Summary: "看共享给了谁",
+		Group: "库与共享",
 		Usage: "skmr skill shares <命名空间>/<名字> [--query <文字>] [--page <页码>] [--json]",
 		Flags: []help.Flag{
 			{Name: "--query", Value: "<文字>", Summary: "按用户名筛"},
@@ -447,6 +472,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill unshare", Summary: "收回某人的共享",
+		Group:      "库与共享",
 		Usage:      "skmr skill unshare <命名空间>/<名字> --user <用户名> [--json]",
 		Flags:      []help.Flag{{Name: "--user", Value: "<用户名>", Summary: "收回谁"}},
 		Args:       []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -460,6 +486,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill request", Summary: "申请更高一档",
+		Group: "库与共享",
 		Usage: "skmr skill request <命名空间>/<名字> --role <档位> | --status | --cancel [--json]",
 		Flags: []help.Flag{
 			{Name: "--role", Value: "invoke|browse|write|maintain|admin", Summary: "申请哪一档"},
@@ -477,6 +504,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill open", Summary: "打开网页上的某一页",
+		Group: "读与用",
 		Usage: "skmr skill open <命名空间>/<名字> [--tab info|files|versions|settings] [--sub general|collaborators|details] [--print] [--json]",
 		Flags: []help.Flag{
 			{Name: "--tab", Value: "info|files|versions|settings", Summary: "打开哪一页"},
@@ -494,6 +522,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill show", Summary: "读完整信息",
+		Group:  "读与用",
 		Usage:  "skmr skill show <命名空间>/<名字> [--no-login]",
 		Flags:  []help.Flag{{Name: "--no-login", Summary: "没有凭据时立即失败"}},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -509,6 +538,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill license", Summary: "读许可证的要点",
+		Group:  "读与用",
 		Usage:  "skmr skill license <命名空间>/<名字> [--no-login]",
 		Flags:  []help.Flag{{Name: "--no-login", Summary: "没有凭据时立即失败"}},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -524,6 +554,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill tags", Summary: "读三组词",
+		Group:  "分类、标签与我的适用场景",
 		Usage:  "skmr skill tags <命名空间>/<名字> [--no-login]",
 		Flags:  []help.Flag{{Name: "--no-login", Summary: "没有凭据时立即失败"}},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -536,6 +567,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill join", Summary: "收进我的库",
+		Group:  "库与共享",
 		Usage:  "skmr skill join <命名空间>/<名字> --yes",
 		Flags:  []help.Flag{{Name: "--yes", Summary: "确认加入；加入后不再确认"}},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -543,12 +575,14 @@ var skillSpecs = []*help.Spec{
 		Failures: []help.Failure{
 			{Code: "skill_not_joinable", Summary: "这个 skill 现在加入不了", Next: "用 skmr skills list 看它现在是什么"},
 			{Code: "skill_offline_pending", Summary: "这个 skill 正在下线中，不能再入库", Next: "要保留它用 skmr skill copy <地址>"},
+			{Code: "skill_quota_exceeded", Summary: "库里的 skill 到上限了", Next: "移出「我加入的」；共享给我的要分享方撤销"},
 		},
 		Examples: []string{"skmr skill join dev/pdf-tools --yes"},
 		Parent:   "skill", Exits: exitsWithCredential,
 	},
 	{
 		Path: "skill leave", Summary: "把加入的移出库",
+		Group:  "库与共享",
 		Usage:  "skmr skill leave <命名空间>/<名字> --yes",
 		Flags:  []help.Flag{{Name: "--yes", Summary: "确认移出"}},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
@@ -561,18 +595,21 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill restore", Summary: "恢复已删除的 skill",
+		Group:  "生命周期",
 		Usage:  "skmr skill restore <命名空间>/<名字>",
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
 		Output: "报告已恢复。",
 		Failures: []help.Failure{
 			{Code: "not_found", Summary: "没有这个已删除的 skill", Next: "用 skills list --show deleted 核对"},
 			{Code: "insufficient_permission", Summary: "你不是所有者", Next: "请所有者来恢复"},
+			{Code: "skill_quota_exceeded", Summary: "这个命名空间的 skill 到上限了", Next: "删除不再使用的 skill"},
 		},
 		Examples: []string{"skmr skill restore dev/pdf-tools"},
 		Parent:   "skill", Exits: exitsWithCredential,
 	},
 	{
 		Path: "skill tag", Summary: "公开标签与我的标签",
+		Group:    "分类、标签与我的适用场景",
 		Usage:    "skmr skill tag <子命令> [参数]",
 		Children: []string{"add", "remove"}, PureGroup: true, Parent: "skill",
 	},
@@ -608,6 +645,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill category", Summary: "公开分类",
+		Group:    "分类、标签与我的适用场景",
 		Usage:    "skmr skill category <子命令> [参数]",
 		Children: []string{"set", "clear"}, PureGroup: true, Parent: "skill",
 	},
@@ -638,6 +676,7 @@ var skillSpecs = []*help.Spec{
 	},
 	{
 		Path: "skill my-when-to-use", Summary: "我的适用场景",
+		Group:    "分类、标签与我的适用场景",
 		Usage:    "skmr skill my-when-to-use <子命令> [参数]",
 		Note:     "只写你自己的检索说法；作者那句在 SKILL.md，随版本发布，改它走 draft → edit → publish。",
 		Children: []string{"set", "clear"}, PureGroup: true, Parent: "skill",

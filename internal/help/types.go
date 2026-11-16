@@ -55,6 +55,11 @@ type Spec struct {
 	ExitNote string
 	// Children are the direct subcommand names. Empty means a leaf.
 	Children []string
+	// Group is the label this verb is listed under on its parent's page. Empty means the parent
+	// page lists it without group headers (the v16 shape). Group order is the order in which
+	// each label first appears in the parent's Children, so there is no second list to keep in
+	// step (v77).
+	Group string
 	// PureGroup marks a group that only routes: it has children and nothing of its own to run.
 	// `skills my-tags` is not one — it lists tags when given no verb — so this cannot be inferred
 	// from the other fields.
@@ -102,7 +107,8 @@ type ExitClass struct {
 	Text string
 }
 
-// Topic is a page of help that is not a command: today only "env".
+// Topic is a page of help that is not a command: env, auth, workflow, and the generated
+// reference.
 //
 // **The catalog enumerates topics**, so adding one is one map entry: the top-level help lists it and
 // an unknown-topic error names the real set, without either place holding a second list. Label is
@@ -111,7 +117,11 @@ type ExitClass struct {
 type Topic struct {
 	Name  string // "env"
 	Label string // "环境变量"
-	Body  string // at most 512 bytes
+	Body  string // at most 512 bytes; workflow is the one exception, at most 1024
+	// Render, when non-nil, generates this topic's page from the catalog and replaces Body.
+	// "reference" uses it: the full command list is derived from the declarations, never stored
+	// as a second copy (v77).
+	Render func(Catalog) string
 }
 
 // Node is one node of the command tree. The tree is derived from Spec.Children; there is no second
