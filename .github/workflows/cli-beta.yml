@@ -167,8 +167,8 @@ jobs:
             echo "::error::MINISIGN_SECRET_KEY is empty — refusing to publish an unsigned beta"
             exit 1
           fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq minisign
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq minisign
           install -d "$RUNNER_TEMP/minisign"
           printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign/minisign.key"
           chmod 600 "$RUNNER_TEMP/minisign/minisign.key"
@@ -391,10 +391,14 @@ jobs:
             got="$(sha256sum "/tmp/$name" | awk '{ print $1 }')"
             [ "$want" = "$got" ] || { echo "::error::$name differs from checksums.txt at $base$name"; exit 1; }
           done
-          for name in checksums.txt install.sh install.ps1; do
+          for name in checksums.txt checksums.txt.sigstore.json checksums.txt.minisig \
+                      minisign.pub install.sh install.ps1; do
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base$name"
           done
           cmp /tmp/checksums.txt dist/checksums.txt
+          cmp /tmp/checksums.txt.sigstore.json dist/checksums.txt.sigstore.json
+          cmp /tmp/checksums.txt.minisig dist/checksums.txt.minisig
+          cmp /tmp/minisign.pub dist/minisign.pub
           cmp /tmp/install.sh install/install.sh
           cmp /tmp/install.ps1 install/install.ps1
           echo "all six packages, checksums.txt and both installers are served byte for byte"

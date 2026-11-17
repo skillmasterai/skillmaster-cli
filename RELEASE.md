@@ -60,7 +60,7 @@ git tag cli/v1.0.0 && git push origin cli/v1.0.0
 
 - **文件名不带版本号**。这样下载地址永久稳定，安装说明不用跟着每次发版改。版本号由二进制自己说。
 - **unix 用 `.tar.gz`，Windows 用 `.zip`**——跟 Go 自己和绝大多数项目的做法一致，Windows 上双击就能解。
-- 每次发布另有：`checksums.txt`（六个包与两个安装脚本的 SHA-256）、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
+- 每次发布另有：`checksums.txt`（六个包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
 
 ## 5 · 构建参数
 
@@ -97,7 +97,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **不放 GitHub Releases**：目标用户在国内，那个域名对他们不可用。git tag 仍然标记版本历史，但**产物只有一个家**。构建来源证明（attestation）存在 GitHub 上，它证明的是「这些字节由哪条工作流、哪个提交构建」，不是产物的下载地址。
 
-**可验证性**：每次发布同时产出两类独立证明。`checksums.txt.sigstore.json` 是 cosign keyless 签名，绑定本仓库工作流的 GitHub OIDC 身份并记入 Sigstore 透明日志；`checksums.txt.minisig` 是 minisign 签名，配合同次发布的 `minisign.pub`，可以完全离线验证。GitHub 的构建来源证明用 `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli` 核对。三者证明的是不同的事：签名说明「这次发布由谁签」，attestation 说明「这些字节由哪次构建产生」。
+**可验证性**：每次发布同时产出三种独立证明。`checksums.txt.sigstore.json` 是 cosign keyless 签名，绑定本仓库工作流的 GitHub OIDC 身份并记入 Sigstore 透明日志；`checksums.txt.minisig` 是 minisign 签名，配合同次发布的 `minisign.pub`，可以完全离线验证。GitHub 的构建来源证明用 `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli` 核对。三者证明的是不同的事：签名说明「这次发布由谁签」，attestation 说明「这些字节由哪次构建产生」。
 
 **上传顺序**：先六个包 → 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
 
@@ -145,7 +145,7 @@ curl -fsSL https://dl.skillmasterai.com/install.sh | sh     # macOS / Linux
 irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 ```
 
-**信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——`curl | sh` 不会带来它本来就没有的安全。`checksums.txt` 现在同时列出两个安装脚本，安装说明要求**先核对脚本的 SHA-256 再执行**；任何人可以拿 `skillmaster-cli/install/` 的源码自己比对。
+**信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——一行式 `curl | sh` / `irm | iex` 不会带来它本来就没有的安全，它们只是最短路径。安装页给出的验证流程是：先核对 `checksums.txt` 的签名或构建来源证明，再核对脚本的 SHA-256，最后把已核对的清单传给安装器（`SKILLMASTER_CHECKSUMS`）。
 
 ## 8 · beta 通道（[ADR 0099](../docs/decisions/0099-the-cli-has-a-beta-channel.md)）
 
@@ -155,7 +155,7 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 |---|---|
 | 版本串 | **测试期内固定**：`1.5.0-beta`（v79 起）。同一提交的正式构建叫 `1.5.0`；beta 通道在 `1.5.0` 发布后仍叫 `1.5.0-beta`，到 `1.6.0` 开线再改 |
 | 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.5.0-beta (a1b2c3d) (API v1)` |
-| 落在哪 | 桶的 `beta/` 下的九个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
+| 落在哪 | 桶的 `beta/` 下的十二个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
 | 怎么装 | `curl -fsSL https://dl.skillmasterai.com/beta/install.sh \| SKILLMASTER_DL_URL=https://dl.skillmasterai.com/beta sh` |
 | 怎么更新 | 自动更新（v25）按编进去的 `beta/` 通道检查；也可以重跑那条安装命令，看 `--version` 的提交号变没变 |
 | 承诺 | 只有一条：装上的构建说得出来自哪次提交。命令面、状态、数据都不保证 |

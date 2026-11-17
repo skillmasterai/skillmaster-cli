@@ -183,8 +183,8 @@ jobs:
             echo "::error::MINISIGN_SECRET_KEY is empty — refusing to publish an unsigned release"
             exit 1
           fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq minisign
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq minisign
           install -d "$RUNNER_TEMP/minisign"
           printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign/minisign.key"
           chmod 600 "$RUNNER_TEMP/minisign/minisign.key"

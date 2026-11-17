@@ -54,17 +54,26 @@ try {
     } catch {
         Die "下载失败：$BaseUrl/$artifact（网络，或这个平台暂时没有产物）"
     }
-    # Its own message: a missing checksums.txt says nothing about whether this platform has a
-    # package, and naming the package sends the reader after the wrong thing.
-    try {
-        Invoke-WebRequest -Uri "$BaseUrl/checksums.txt" -OutFile (Join-Path $tmp 'checksums.txt') -UseBasicParsing
-    } catch {
-        Die "下载失败：$BaseUrl/checksums.txt（包下载成功了，缺的是校验和文件）"
+    # **A caller that already verified the manifest passes it in.** The page verifies a signed
+    # `checksums.txt` and then runs this script; without this, the script would download a fresh
+    # copy from the same origin and the signed one would protect nothing.
+    $sums = $env:SKILLMASTER_CHECKSUMS
+    if ($sums) {
+        if (-not (Test-Path $sums)) { Die "SKILLMASTER_CHECKSUMS 指向的文件不存在：$sums" }
+    } else {
+        # Its own message: a missing checksums.txt says nothing about whether this platform has a
+        # package, and naming the package sends the reader after the wrong thing.
+        $sums = Join-Path $tmp 'checksums.txt'
+        try {
+            Invoke-WebRequest -Uri "$BaseUrl/checksums.txt" -OutFile $sums -UseBasicParsing
+        } catch {
+            Die "下载失败：$BaseUrl/checksums.txt（包下载成功了，缺的是校验和文件）"
+        }
     }
 
     # --- 3. Check the checksum -----------------------------------------------
 
-    $line = Select-String -Path (Join-Path $tmp 'checksums.txt') -Pattern "([0-9a-f]{64})\s+$([regex]::Escape($artifact))$" |
+    $line = Select-String -Path $sums -Pattern "([0-9a-f]{64})\s+$([regex]::Escape($artifact))$" |
         Select-Object -First 1
     if (-not $line) { Die "checksums.txt 里没有 $artifact 这一行" }
     $want = $line.Matches[0].Groups[1].Value
@@ -77,9 +86,8 @@ try {
 
     try { Expand-Archive -Path (Join-Path $tmp $artifact) -DestinationPath $tmp -Force -ErrorAction Stop }
     catch { Die "解包失败：$artifact" }
-    # The install document maps these two messages to what the agent says to the person
-    # (`建不了安装目录` / `复制失败` → 第 18 行). Without them Windows raises a raw PowerShell
-    # exception the document cannot match, and the failure gets relayed verbatim instead.
+    # Named failures, so the installer reports a cause the install page can describe instead of
+    # a raw PowerShell exception.
     try { New-Item -ItemType Directory -Path $InstallDir -Force -ErrorAction Stop | Out-Null }
     catch { Die "建不了安装目录：$InstallDir" }
     # The lines printed below are commands the user or an agent will paste; a relative override
@@ -139,14 +147,14 @@ try {
     Say '客户端默认最多每 24 小时检查一次更新，下载的更新包按 checksums.txt 校验。'
     Say '不想自动更新：在 PowerShell profile 里设 $env:SKILLMASTER_AUTO_UPDATE=0。'
     Say ''
-    Say '下一步：'
-    Say ('  & "' + $target + '" doctor --fix')
-    Say '（把状态目录写进检测到的 AI 工具配置；Windows 安装器不做这一步。）'
-    Say '然后：'
+    Say '可选：如果想让 SkillMaster 在这些 AI 工具里少弹窗，先看会改什么：'
+    Say ('  & "' + $target + '" doctor --fix --dry-run')
+    Say ('确认后再运行 & "' + $target + '" doctor --fix；是否运行由你决定，这一步不会自动执行。')
+    Say '然后确认登录：'
     Say ('  & "' + $target + '" auth status')
-    Say '已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。'
-    Say '人自己在终端装的话，可以运行下面这条读引导正文：'
-    Say ('  & "' + $target + '" startup')
+    Say '已登录后，新开一个会话，让 Agent 带你走一遍：'
+    Say '  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster 的新人引导'
+    Say ('  其他 Agent：& "' + $target + '" startup')
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } finally {
     # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it

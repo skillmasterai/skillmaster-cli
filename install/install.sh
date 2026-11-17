@@ -61,12 +61,21 @@ say "下载 $BASE_URL/$artifact"
 # oldest ones. A 404 is not retried either way; `--retry` already covers the transient cases.
 curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/$artifact" "$BASE_URL/$artifact" ||
   die "下载失败：$BASE_URL/${artifact}（网络，或这个平台暂时没有产物）"
-curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/checksums.txt" "$BASE_URL/checksums.txt" ||
-  die "下载失败：$BASE_URL/checksums.txt"
+# **A caller that already verified the manifest passes it in.** The page verifies a signed
+# `checksums.txt` and then runs this script; without this, the script would download a fresh
+# copy from the same origin and the signed one would protect nothing.
+sums="${SKILLMASTER_CHECKSUMS:-}"
+if [ -n "$sums" ]; then
+  [ -f "$sums" ] || die "SKILLMASTER_CHECKSUMS 指向的文件不存在：$sums"
+else
+  sums="$tmp/checksums.txt"
+  curl -fsSL --retry 3 --retry-delay 2 -o "$sums" "$BASE_URL/checksums.txt" ||
+    die "下载失败：$BASE_URL/checksums.txt"
+fi
 
 # --- 3. Check the checksum ---------------------------------------------------
 
-want="$(awk -v name="$artifact" '$2 == name { print $1 }' "$tmp/checksums.txt")"
+want="$(awk -v name="$artifact" '$2 == name { print $1 }' "$sums")"
 [ -n "$want" ] || die "checksums.txt 里没有 $artifact 这一行"
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -128,11 +137,10 @@ say ""
 # --- 8. Offer to configure the agent sandboxes ------------------------------
 #
 # **The installer prints; it never reads a terminal.** A consent prompt on `/dev/tty` cannot be
-# answered by an agent, and a prompt nobody sees is worse than a sentence. The agent that runs this
-# asks the user through its own question UI (`AskUserQuestion`) and then runs `doctor --fix`; a
-# person running the command is giving consent by running it. The keys, paths and backups stay in
-# `skmr doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can never be taken
-# as "yes".
+# answered here, and a prompt nobody sees is worse than a sentence. Whether to run `doctor --fix`
+# is the user's decision; a person running it gives consent by running it. The keys, paths and
+# backups stay in `skmr doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can
+# never be taken as "yes".
 #
 # **Only print this when there is something to configure.** A terminal-only user with none of these
 # tools installed should not be handed a security question about them.
@@ -183,7 +191,7 @@ say "不想自动更新：在 shell 配置里设 SKILLMASTER_AUTO_UPDATE=0。"
 say ""
 say "下一步："
 say "  \"$INSTALL_DIR/skmr\" auth status"
-say "已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。"
-say "人自己在终端装的话，可以运行下面这条读引导正文："
-say "  \"$INSTALL_DIR/skmr\" startup"
+say "已登录后，新开一个会话，让 Agent 带你走一遍："
+say "  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster 的新人引导"
+say "  其他 Agent：\"$INSTALL_DIR/skmr\" startup"
 say "云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。"
