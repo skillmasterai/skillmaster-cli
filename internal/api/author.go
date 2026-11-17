@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -327,6 +328,100 @@ func (c Client) AuthorDiscard(ctx context.Context, address, pin string) (AuthorW
 		return AuthorWriteResult{}, fmt.Errorf("丢弃响应不是 JSON：%w", err)
 	}
 	return result, nil
+}
+
+// RunContract is the version's own description of how to run it (ADR 0222).
+//
+// **A declaration, not a discovery.** A script knows which files outside `scripts/` it reads, and
+// only its author does; the contract says so once, at publish time, and `run` executes exactly what
+// it declares. The fields mirror the technical design's model one for one.
+type RunContract struct {
+	SchemaVersion int               `json:"schemaVersion"`
+	Files         []string          `json:"files"`
+	Path          []string          `json:"path"`
+	Pythonpath    []string          `json:"pythonpath"`
+	Cwd           string            `json:"cwd"`
+	Env           map[string]string `json:"env"`
+	Limits        RunLimits         `json:"limits"`
+	Default       []string          `json:"default"`
+}
+
+// RunLimits is the contract's execution ceiling.
+type RunLimits struct {
+	TimeoutSeconds int `json:"timeoutSeconds"`
+}
+
+// AuthorRunContract is the answer to `GET …/versions/{pin}/run`: the effective contract, where it
+// came from, and anything the server had to skip to get there.
+//
+// **`Source` is one of package / profile / inferred.** The first is the version's own `run.json`,
+// the second the platform's run profile, and the third the server's inference when neither was
+// present. `Problems` is never silent: a contract the server had to skip is reported here so
+// `--explain` can say why the answer is not what the package contains.
+type AuthorRunContract struct {
+	Contract RunContract `json:"contract"`
+	Source   string      `json:"source"`
+	Problems []string    `json:"problems"`
+	// Warnings names contract keys this CLI does not understand. Filled on the client side, never
+	// on the wire: the server rejects unknown keys at submission, but a run profile can carry one
+	// and an older CLI must still run the version (ADR 0222 §决定 7).
+	Warnings []string `json:"-"`
+}
+
+// AuthorRunContract reads the effective run contract for one version.
+//
+// **The same rung as the manifest** (`browse`): the contract names paths inside the version the
+// caller may already list and read, so asking for it costs no extra permission. The pin is any
+// version reference the author plane accepts — `run` always asks with the digest it resolved, so
+// the contract answered is the one belonging to the bytes about to be fetched.
+func (c Client) AuthorRunContract(ctx context.Context, address, pin string) (AuthorRunContract, error) {
+	path, err := authorVersionPath(address, pin)
+	if err != nil {
+		return AuthorRunContract{}, err
+	}
+	body, err := c.authorRequest(ctx, http.MethodGet, path+"/run", nil)
+	if err != nil {
+		return AuthorRunContract{}, err
+	}
+	var answer AuthorRunContract
+	if err := json.Unmarshal(body, &answer); err != nil {
+		return AuthorRunContract{}, fmt.Errorf("运行契约响应不是 JSON：%w", err)
+	}
+	answer.Warnings = unknownContractFields(body)
+	return answer, nil
+}
+
+// unknownContractFields lists contract keys this CLI does not know, sorted so the warning reads the
+// same on every run. Ignoring them silently would hide a typo in a run profile; refusing them would
+// stop an older CLI from running a version whose contract is merely newer.
+func unknownContractFields(body []byte) []string {
+	var envelope struct {
+		Contract map[string]json.RawMessage `json:"contract"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return nil
+	}
+	known := map[string]bool{
+		"schemaVersion": true, "files": true, "path": true, "pythonpath": true,
+		"cwd": true, "env": true, "limits": true, "default": true,
+	}
+	var unknown []string
+	for key := range envelope.Contract {
+		if !known[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	// Nested objects matter too: a newer `limits.memoryMb` would otherwise be dropped in silence.
+	var limits map[string]json.RawMessage
+	if raw, ok := envelope.Contract["limits"]; ok && json.Unmarshal(raw, &limits) == nil {
+		for key := range limits {
+			if key != "timeoutSeconds" {
+				unknown = append(unknown, "limits."+key)
+			}
+		}
+	}
+	sort.Strings(unknown)
+	return unknown
 }
 
 // AuthorFileList is a version's manifest and the digest it belongs to.

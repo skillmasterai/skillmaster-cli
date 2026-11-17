@@ -186,7 +186,13 @@ else
 fi
 
 say ""
+say "客户端默认最多每 24 小时检查一次更新，下载的更新包按 checksums.txt 校验。"
+say "不想自动更新：在 shell 配置里设 SKILLMASTER_AUTO_UPDATE=0。"
+
+say ""
 say "下一步："
 say "  \"$INSTALL_DIR/skmr\" auth status"
-say "已登录再运行："
+say "已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。"
+say "人自己在终端装的话，可以运行下面这条读引导正文："
 say "  \"$INSTALL_DIR/skmr\" startup"
+say "云端 / 远程 Agent（每开一个会话就是新环境）按安装说明第 30 行处理。"

@@ -60,7 +60,7 @@ git tag cli/v1.0.0 && git push origin cli/v1.0.0
 
 - **文件名不带版本号**。这样下载地址永久稳定，安装说明不用跟着每次发版改。版本号由二进制自己说。
 - **unix 用 `.tar.gz`，Windows 用 `.zip`**——跟 Go 自己和绝大多数项目的做法一致，Windows 上双击就能解。
-- 每次发布另有：`checksums.txt`（六个包的 SHA-256）、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
+- 每次发布另有：`checksums.txt`（六个包与两个安装脚本的 SHA-256）、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
 
 ## 5 · 构建参数
 
@@ -130,11 +130,11 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 - **PATH**：unix 用 `~/.local/bin`，不要求 sudo；Windows 用 `%LOCALAPPDATA%\SkillMaster\bin`，用 `[Environment]::SetEnvironmentVariable('Path', …, 'User')` 写用户 PATH——**不用 `setx`**，它会把长 PATH 截到 1024 字符。
 - **收尾**：打印 `skmr --version`（跑不起来就停在这里）。
 
-**替换二进制时优先原地写，`mv` / `Move-Item` / `File.Replace` 只是退路**：安装脚本经常由 agent 在沙箱里执行，而 WorkBuddy 5.8.6 实测（2026-11-11）允许写文件内容、拒绝 rename 覆盖已有文件；首次安装目标不存在时 rename 能过，升级覆盖已有二进制时不能。原地写失败（例如运行中的二进制在 Linux 上返回 `ETXTBSY`）才退回 staged + 改名，并在失败信息里告诉用户把这条安装命令放到沙箱外跑。`skmr update` 替换的是**正在运行**的二进制，仍用 rename；它在沙箱里失败时会提示放到沙箱外跑一次。
+**替换二进制时优先原地写，`mv` / `Move-Item` / `File.Replace` 只是退路**：安装脚本经常由 agent 在沙箱里执行，而 WorkBuddy 5.8.6 实测（2026-11-11）允许写文件内容、拒绝 rename 覆盖已有文件；首次安装目标不存在时 rename 能过，升级覆盖已有二进制时不能。原地写失败（例如运行中的二进制在 Linux 上返回 `ETXTBSY`）才退回 staged + 改名，并在失败信息里把这条安装命令交给用户，请他在自己的终端里跑。`skmr update` 替换的是**正在运行**的二进制，仍用 rename；它在沙箱里失败时同样把命令交给用户。
 
 **原地写没有原子性**：`cp` / `Copy-Item` 一开始写就截断目标，进程被杀、沙箱超时或磁盘满会留下半截二进制，且没有备份；`install.sh` 的 `INT`/`TERM` trap 会提示重跑安装（`install.ps1` 没有 trap）。staged 退路只在复制返回失败时触发，覆盖不了「复制进程被杀」。
 
-**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾打印的下一步是 `auth status`，已登录再运行 `startup`。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `doctor --fix`，再 `auth status` → `startup`。
+**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾打印的下一步是 `auth status`；已登录后提示新开会话、把安装说明里的提示词发给 Agent，不再让安装会话运行 `startup`；人自己在终端装时仍打印 `startup` 作为读正文的替代。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `doctor --fix`，再 `auth status`，然后新开会话交提示词。
 
 **用法**：
 
@@ -143,7 +143,7 @@ curl -fsSL https://dl.skillmasterai.com/install.sh | sh     # macOS / Linux
 irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 ```
 
-**信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——`curl | sh` 不会带来它本来就没有的安全。要更严一点，先下载、读一遍、再执行。
+**信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——`curl | sh` 不会带来它本来就没有的安全。`checksums.txt` 现在同时列出两个安装脚本，安装说明要求**先核对脚本的 SHA-256 再执行**；任何人可以拿 `skillmaster-cli/install/` 的源码自己比对。
 
 ## 8 · beta 通道（[ADR 0099](../docs/decisions/0099-the-cli-has-a-beta-channel.md)）
 

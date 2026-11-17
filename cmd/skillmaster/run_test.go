@@ -25,6 +25,11 @@ func runFetchStub(t *testing.T, w http.ResponseWriter, r *http.Request, digest s
 	if !strings.Contains(r.URL.Path, "/versions/sha256:") {
 		return false
 	}
+	// `run` asks for the effective contract before it materializes anything (v82); a stub for the
+	// fetch has to answer that too, with the pre-v82 default, unless a test overrides the case.
+	if runContractStub(w, r) {
+		return true
+	}
 	if strings.HasSuffix(r.URL.Path, "/files") {
 		w.Header().Set("ETag", `"sha256:`+digest+`"`)
 		var rows []string
@@ -48,6 +53,21 @@ func runFetchStub(t *testing.T, w http.ResponseWriter, r *http.Request, digest s
 		return true
 	}
 	_, _ = w.Write([]byte(body))
+	return true
+}
+
+// runContractStub answers the v82 contract question with the inferred default.
+//
+// Every `run` fetch now starts with `GET …/versions/sha256:…/run`; a test whose handler predates
+// the route would otherwise report it as unexpected. Tests that exercise another contract answer
+// the case themselves, before this helper.
+func runContractStub(w http.ResponseWriter, r *http.Request) bool {
+	if !strings.HasSuffix(r.URL.Path, "/run") {
+		return false
+	}
+	_, _ = w.Write([]byte(`{"contract":{"schemaVersion":1,"files":["scripts/"],` +
+		`"path":[],"pythonpath":[],"cwd":"script","env":{},` +
+		`"limits":{"timeoutSeconds":120},"default":null},"source":"package","problems":[]}`))
 	return true
 }
 
@@ -132,26 +152,22 @@ func TestRunResolvesOnlyScriptPaths(t *testing.T) {
 	}
 }
 
-// `scripts/` is the default working directory because it is the one both existing spellings of a
-// command agree on: `python x.py` needs it, and `python scripts/x.py` was already rewritten to an
-// absolute path before the child starts.
-func TestRunWorksInScriptsByDefault(t *testing.T) {
+// `script` puts the child beside the script it named, so `python x.py` and `python scripts/x.py`
+// agree; with nothing resolved it falls back to the version root (ADR 0222 §决定 5).
+func TestRunWorksInTheScriptsDirectoryForAScript(t *testing.T) {
 	skill := t.TempDir()
 	scripts := filepath.Join(skill, "scripts")
 	if err := os.MkdirAll(scripts, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := workingDirectory(skill, ""); err != nil || got != scripts {
-		t.Errorf("default working directory = %q (%v), want %q", got, err, scripts)
+	script := filepath.Join(scripts, "plan.py")
+	caller := t.TempDir()
+	if got, err := workingDirectory(skill, "script", script, "", caller); err != nil || got != scripts {
+		t.Errorf("working directory = %q (%v), want %q", got, err, scripts)
 	}
-	if got, err := workingDirectory(skill, "data"); err != nil || got != filepath.Join(skill, "data") {
-		t.Errorf("--cwd resolved to %q (%v)", got, err)
-	}
-
-	// A skill with no scripts/ still runs: the root is where its files are.
-	plain := t.TempDir()
-	if got, err := workingDirectory(plain, ""); err != nil || got != plain {
-		t.Errorf("working directory without scripts/ = %q (%v)", got, err)
+	// A skill with no script named still runs: the version root is where its files are.
+	if got, err := workingDirectory(skill, "script", "", "", caller); err != nil || got != skill {
+		t.Errorf("working directory without a script = %q (%v), want %q", got, err, skill)
 	}
 }
 
@@ -270,7 +286,7 @@ func TestRunDoesNotResolveOutsideScripts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(scripts, "x.py"), []byte("print(2)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := resolveInsideScripts(scripts, "../x.py"); err == nil {
+	if got, err := lookupClosureFile(root, "../x.py"); err == nil {
 		t.Errorf("../x.py resolved to %q", got)
 	}
 }

@@ -211,27 +211,32 @@ var topSpecs = []*help.Spec{
 	{
 		Path:    "run",
 		Summary: "执行 skill 命令",
-		Usage: "skmr run <地址>[@版本] [--cwd <目录>] [--cache-in <目录>] [--no-cache] [--yes] [--json] " +
-			"-- <命令...>",
+		Usage: "skmr run <地址>[@版本] [--cwd <目录>] [--cache-in <目录>] [--no-cache] [--yes] " +
+			"[--json] [--explain] [--with <路径>]... [-- <命令...>]",
 		Flags: []help.Flag{
-			{Name: "--cwd", Value: "<目录>", Summary: "在哪个目录执行；默认 scripts/"},
+			{Name: "--cwd", Value: "<目录>", Summary: "在哪个目录执行；相对路径按当前目录算"},
 			{Name: "--cache-in", Value: "<目录>", Summary: "取回的版本放哪；默认在临时目录里"},
 			{Name: "--no-cache", Summary: "不命中缓存，取到一个新的临时目录再跑"},
 			{Name: "--yes", Aliases: []string{"-y"}, Summary: "跳过首次执行的确认，并记下来"},
 			{Name: "--json", Summary: "跑完在 stdout 打一行结果 JSON"},
+			{Name: "--explain", Summary: "只显示生效契约与解析结果，不执行"},
+			{Name: "--with", Value: "<路径>", Summary: "额外补一个这一版清单里的文件（可重复）"},
 			{Name: "--", Summary: "分隔符：后面是要执行的命令（脚本路径会解析）"},
 		},
 		Args: []help.Arg{
 			{Name: "<地址>", Key: "address"},
 			{Name: "<命令...>", Key: "command"},
 		},
-		Output: "命令的 stdout / stderr 原样透传；`run` 自己只说一句在哪个目录执行（走 stderr）。" +
-			"只取这一版的 `scripts/`；没有脚本时拒绝。" +
-			"默认把命令里的脚本路径解析到 `scripts/` 下，工作目录也是 `scripts/`。" +
-			"版本可以写版本名、sha256 摘要或草稿的版本码——草稿在发布前就能这样跑一遍。" + "草稿的服务凭据：已发布的 skill 按公开信息判断；从未发布的要能写这个 skill 的凭据才问得到，问不到时会说明并照常运行。" +
-			"绑定了服务凭据的变量会注入到子进程的环境里，并覆盖本机已有的同名变量。",
+		Output: "stdout / stderr 原样透传。" +
+			"取回闭包 `files`+`path`+`pythonpath`（默认 `scripts/`），核对。" +
+			"脚本按闭包解析：扩展名白名单或 `#!`；`PATH` 上的裸词不劫持。" +
+			"命令可省：有 `default` 就执行。" +
+			"cwd：script / package / project。" +
+			"版本可写名字、sha256 或草稿码。" +
+			"草稿凭据问不到时会说明并照常运行。" +
+			"服务凭据注入并覆盖同名变量。",
 		Failures: []help.Failure{
-			{Code: "usage", Summary: "-- 后面没有命令，或给了不止一个地址", Next: "按 skmr run <地址> -- <命令> 写"},
+			{Code: "usage", Summary: "-- 后面没有命令、契约也没有 default，或给了不止一个地址", Next: "写 -- <命令>；或让作者声明 default"},
 			{Code: "not_found", Summary: "地址不存在，或这个版本看不到", Next: "skmr skill versions <地址> 看有哪些版本"},
 			{Code: "skill_gone", Summary: "这个 skill 已被作者删除", Next: "地址不再服务；换一个用 skmr skills search"},
 			{Code: "network", Summary: "连不上服务端", Next: "先跑 skmr doctor 看网络与沙箱"},
@@ -240,7 +245,7 @@ var topSpecs = []*help.Spec{
 		Examples: []string{"skmr run dev/pdf-tools -- python3 plan.py"},
 		Parent:   "",
 		Exits:    exitsWithCredential,
-		ExitNote: "被执行的命令的退出码原样返回（可以是任何值）；run 自己失败时是 0 / 1 / 2 / 4。",
+		ExitNote: "被执行的命令的退出码原样返回；run 自己失败时是 1 / 2 / 4，超时是 124。",
 	},
 	{
 		Path:    "doctor",

@@ -46,6 +46,7 @@ func TestRunFetchesOnlyScripts(t *testing.T) {
 			if index := strings.Index(r.URL.Path, "/files/"); index >= 0 {
 				requested = append(requested, r.URL.Path[index+len("/files/"):])
 			}
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -64,7 +65,7 @@ func TestRunFetchesOnlyScripts(t *testing.T) {
 			t.Errorf("run fetched %q, which is outside scripts/", rel)
 		}
 	}
-	dir := filepath.Join(cache, cacheDirName(digest))
+	dir := filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))
 	// **Read the marker, don't ask the code that wrote it.** `hasRunMarker` is the hit test under
 	// test; using it as the assertion would let a wrong digest spelling pass on both sides.
 	data, err := os.ReadFile(filepath.Join(dir, runMarker))
@@ -113,6 +114,7 @@ func TestRunRefusesAVersionWithoutScripts(t *testing.T) {
 			_, _ = w.Write([]byte(`{"skill":{"name":"hello"},"version":{"digest":"sha256:` +
 				digest + `"}}`))
 		case runFetchStub(t, w, r, digest, files):
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -128,7 +130,7 @@ func TestRunRefusesAVersionWithoutScripts(t *testing.T) {
 	if !strings.Contains(stderr, "没有可执行的脚本") {
 		t.Errorf("the refusal does not name the reason: %q", stderr)
 	}
-	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused run left a cache directory (err = %v)", err)
 	}
 }
@@ -154,6 +156,7 @@ func TestRunRefusesBytesThatDoNotMatchTheManifest(t *testing.T) {
 				`,"is_binary":false}]}`))
 		case strings.Contains(r.URL.Path, "/files/scripts/hello.sh"):
 			_, _ = w.Write([]byte(body))
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -169,7 +172,7 @@ func TestRunRefusesBytesThatDoNotMatchTheManifest(t *testing.T) {
 	if !strings.Contains(stderr, "字节与清单不符") {
 		t.Errorf("the refusal does not name the mismatch: %q", stderr)
 	}
-	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a mismatched run left a cache directory (err = %v)", err)
 	}
 }
@@ -190,6 +193,7 @@ func TestRunRefusesAManifestForAnotherVersion(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/files"):
 			w.Header().Set("ETag", `"sha256:`+strings.Repeat("11", 32)+`"`)
 			_, _ = w.Write([]byte(`{"files":[]}`))
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -205,7 +209,7 @@ func TestRunRefusesAManifestForAnotherVersion(t *testing.T) {
 	if !strings.Contains(stderr, "服务端给的清单是") {
 		t.Errorf("the refusal does not name the mismatch: %q", stderr)
 	}
-	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a mismatched manifest left a cache directory (err = %v)", err)
 	}
 }
@@ -228,8 +232,15 @@ func TestRunHitsTheCacheOnTheSecondCall(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/author/skills/me/hello/versions/JD0T518T"):
 			_, _ = w.Write([]byte(`{"skill":{"name":"hello"},"version":{"digest":"sha256:` +
 				digest + `"}}`))
+		case strings.HasSuffix(r.URL.Path, "/run"):
+			// The contract is asked on every run, cache hit or not: a profile change does not move
+			// the digest, so this is the one question the cache cannot answer for itself.
+			_, _ = w.Write([]byte(`{"contract":{"schemaVersion":1,"files":["scripts/"],` +
+				`"path":[],"pythonpath":[],"cwd":"script","env":{},` +
+				`"limits":{"timeoutSeconds":120},"default":null},"source":"package","problems":[]}`))
 		case runFetchStub(t, w, r, digest, files):
 			fetches++
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -244,7 +255,8 @@ func TestRunHitsTheCacheOnTheSecondCall(t *testing.T) {
 			t.Fatalf("run %d: status = %d, stderr = %q", attempt, status, stderr)
 		}
 	}
-	// One manifest and one file on the first run; the second run must hit the marker.
+	// One manifest and one file on the first run; the second run must hit the marker and fetch
+	// neither (its only request is the contract, handled above).
 	if fetches != 2 {
 		t.Errorf("fetch requests = %d, want 2 (one fetch, then a cache hit)", fetches)
 	}
@@ -252,29 +264,44 @@ func TestRunHitsTheCacheOnTheSecondCall(t *testing.T) {
 
 // **The hit test is the marker's own contents**, not "the directory exists": a marker for another
 // digest or another cache rule is a miss, because the rule decides what the directory holds.
-func TestHasRunMarkerRequiresTheDigestAndTheRule(t *testing.T) {
+func TestHasRunMarkerRequiresTheDigestTheRuleAndTheContract(t *testing.T) {
 	dir := t.TempDir()
 	digest := strings.Repeat("d2", 32)
-	if hasRunMarker(dir, digest) {
+	contract := inferredContract()
+	hash := contractHash(contract)
+	if hasRunMarker(dir, digest, hash) {
 		t.Fatal("a directory with no marker was a hit")
 	}
-	if err := writeRunMarker(dir, digest); err != nil {
+	if err := writeRunMarker(dir, digest, contract, "inferred", nil); err != nil {
 		t.Fatalf("writeRunMarker: %v", err)
 	}
-	if !hasRunMarker(dir, digest) {
+	if !hasRunMarker(dir, digest, hash) {
 		t.Error("a freshly written marker was not a hit")
 	}
-	if hasRunMarker(dir, strings.Repeat("d3", 32)) {
+	if hasRunMarker(dir, strings.Repeat("d3", 32), hash) {
 		t.Error("a marker for another digest was a hit")
+	}
+	// **The contract is part of the hit test**: a run profile can change the closure without
+	// changing the digest, and reusing the old directory would run the old closure.
+	if hasRunMarker(dir, digest, contractHash(otherContract())) {
+		t.Error("a marker written under another contract was a hit")
 	}
 	other := []byte(`{"digest":"sha256:` + digest + `","rule":` +
 		fmt.Sprint(cacheRuleVersion+1) + `}`)
 	if err := os.WriteFile(filepath.Join(dir, runMarker), other, 0o644); err != nil {
 		t.Fatalf("write the other marker: %v", err)
 	}
-	if hasRunMarker(dir, digest) {
+	if hasRunMarker(dir, digest, hash) {
 		t.Error("a marker written under another rule was a hit")
 	}
+}
+
+// otherContract is a valid contract different from the inferred default, so a test can ask whether
+// the cache key notices the difference.
+func otherContract() api.RunContract {
+	contract := inferredContract()
+	contract.Files = []string{"scripts/", "reference/"}
+	return contract
 }
 
 // **A manifest with no digest cannot be tied to the version the run resolved.** Per-file hashes
@@ -295,6 +322,7 @@ func TestRunRefusesAManifestWithoutADigest(t *testing.T) {
 			// No ETag: the listing is not tied to any digest.
 			_, _ = w.Write([]byte(`{"files":[{"relpath":"scripts/hello.sh",` +
 				`"sha256":"sha256:` + strings.Repeat("00", 32) + `","size":1,"is_binary":false}]}`))
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -310,7 +338,7 @@ func TestRunRefusesAManifestWithoutADigest(t *testing.T) {
 	if !strings.Contains(stderr, "没有给出这一版的摘要") {
 		t.Errorf("the refusal does not name the missing digest: %q", stderr)
 	}
-	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a digest-less manifest left a cache directory (err = %v)", err)
 	}
 }
@@ -335,6 +363,7 @@ func TestRunNamesTheStagingWhenAFileCannotBeFetched(t *testing.T) {
 				`"sha256":"sha256:` + strings.Repeat("00", 32) + `","size":1,"is_binary":false}]}`))
 		case strings.Contains(r.URL.Path, "/files/scripts/hello.sh"):
 			http.NotFound(w, r)
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -350,7 +379,7 @@ func TestRunNamesTheStagingWhenAFileCannotBeFetched(t *testing.T) {
 	if !strings.Contains(stderr, "半成品留在") {
 		t.Errorf("the error does not name the staging directory: %q", stderr)
 	}
-	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cache, cacheDirName(digest, contractHash(inferredContract())))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a failed file fetch left a cache directory (err = %v)", err)
 	}
 }
@@ -376,6 +405,7 @@ func TestRunRefusesAManifestPathThatClimbsOut(t *testing.T) {
 			_, _ = w.Write([]byte(`{"files":[{"relpath":"scripts/../../escape.sh",` +
 				`"sha256":"sha256:` + hex.EncodeToString(sum[:]) + `","size":` +
 				fmt.Sprint(len(body)) + `,"is_binary":false}]}`))
+		case runContractStub(w, r):
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)

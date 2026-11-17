@@ -136,13 +136,18 @@ try {
     if ($LASTEXITCODE -ne 0) { Die "装好了但跑不起来：$target --version" }
 
     Say ""
+    Say '客户端默认最多每 24 小时检查一次更新，下载的更新包按 checksums.txt 校验。'
+    Say '不想自动更新：在 PowerShell profile 里设 $env:SKILLMASTER_AUTO_UPDATE=0。'
+    Say ''
     Say '下一步：'
     Say ('  & "' + $target + '" doctor --fix')
     Say '（把状态目录写进检测到的 AI 工具配置；Windows 安装器不做这一步。）'
     Say '然后：'
     Say ('  & "' + $target + '" auth status')
-    Say '已登录再运行：'
+    Say '已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。'
+    Say '人自己在终端装的话，可以运行下面这条读引导正文：'
     Say ('  & "' + $target + '" startup')
+    Say '云端 / 远程 Agent（每开一个会话就是新环境）按安装说明第 30 行处理。'
 } finally {
     # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it
     # is not covered by removing $tmp: a failed replace would otherwise leave it beside the old

@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/skillmasterai/skillmaster-cli/internal/api"
 	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
@@ -111,7 +112,26 @@ func run(ctx context.Context, args []string) (err error) {
 	case "skills":
 		return skillsVerb(ctx, args[1:])
 	case "run":
-		return runSkill(ctx, args[1:])
+		// **A machine reading `--json` still gets a machine-readable refusal.** Every other
+		// `--json` command serialises its failure through `versionErr`; `run` used to leave prose
+		// on stderr and nothing on stdout (v82 audit). The child's own exit code is not a failure
+		// of `run` and passes through untouched.
+		err := runSkill(ctx, args[1:])
+		var childExit *exitError
+		if err == nil || errors.As(err, &childExit) {
+			return err
+		}
+		// Only before the separator: a script's own `--json` argument is the script's.
+		jsonMode := false
+		for _, arg := range args[1:] {
+			if arg == "--" {
+				break
+			}
+			if arg == "--json" {
+				jsonMode = true
+			}
+		}
+		return versionErr(jsonMode, err, "")
 	case "doctor":
 		return doctorCmd(ctx, args[1:])
 	case "skill":
