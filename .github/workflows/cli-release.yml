@@ -476,23 +476,12 @@ jobs:
           cmp /tmp/install.ps1 install/install.ps1
           echo "all six packages, checksums.txt and both installers are served byte for byte"
 
-      # **The address users install and update from, asked from the machine that answers it.**
-      # Downloads use `dl.skillmasterai.com`, the bucket's front door. A GitHub runner's TLS to
-      # that host was reset between ClientHello and ServerHello before the ICP filing
-      # (console.yml records the same thing), so the probe runs on the host: through the real name
-      # and the real certificate, with DNS swapped for loopback.
-      - name: The download address serves it, from the host
-        env:
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      # The public repository must not carry the production SSH key. The object is verified
+      # through the bucket endpoint, which the runner can reach; nginx and its certificate
+      # are checked by the server repository's host check.
+      - name: The bucket serves the published installer
         run: |
           set -euo pipefail
-          key="$RUNNER_TEMP/deploy_key"
-          printf '%s\n' "$DEPLOY_KEY" > "$key"
-          chmod 600 "$key"
-          ssh -i "$key" -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST" \
-            'curl -fsS --retry 10 --retry-delay 2 --resolve dl.skillmasterai.com:443:127.0.0.1 \
-               -o /dev/null -w "https://dl.skillmasterai.com/install.sh -> %{http_code}\n" \
-               https://dl.skillmasterai.com/install.sh'
-          echo "dl.skillmasterai.com serves install.sh through nginx and its certificate"
+          url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/install.sh"
+          curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
+          echo "the bucket serves install.sh"
