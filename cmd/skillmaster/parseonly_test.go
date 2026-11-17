@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // The declaration is a promise about the command, so the tests read it the way a caller would:

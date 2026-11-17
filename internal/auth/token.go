@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 // tokenTimeout bounds every one-shot call this package makes to the server's own endpoints: the

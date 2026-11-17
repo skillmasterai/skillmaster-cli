@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // sourceNotFound is `skill copy`'s own 404 sentence: the shared one says 「在你的 skill 里」, which

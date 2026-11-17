@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 	"golang.org/x/crypto/x509roots/fallback/bundle"
 )
 

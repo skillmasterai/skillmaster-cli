@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // refusingTransport fails every request the way a sandbox refusing an outbound connection does.

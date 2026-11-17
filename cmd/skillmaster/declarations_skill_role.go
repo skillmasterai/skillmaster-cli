@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // skillRoleSpecs holds the one collaborator verb added in v45. It lives apart so the large
 // `skill` declaration file stays inside its size limit.

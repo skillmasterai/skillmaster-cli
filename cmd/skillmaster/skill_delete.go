@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // skillDelete is the one page action that also executes: a skill that never had a version go live

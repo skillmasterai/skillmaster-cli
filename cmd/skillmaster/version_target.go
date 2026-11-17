@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 	"regexp"
 	"strings"
 )

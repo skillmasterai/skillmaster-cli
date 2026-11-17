@@ -1,5 +1,9 @@
 # skmr CLI
 
+> **Public source repository.** The CLI and its install scripts are open source under
+> Apache-2.0. Product documentation and decision records live in the private
+> `skillmaster-platform` repository; `../docs/…` links below resolve only there.
+
 The client that holds credentials and fetches skills on demand. It is the only
 component that covers unattended use, and `skmr startup` is how a machine gets onto the
 platform: it signs in, says where the person is in the journey, and loads the journey itself from

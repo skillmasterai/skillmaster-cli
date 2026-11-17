@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // feedbackSpecs is the `feedback` group: the group and four command paths (v64; attach in v65).
 var feedbackSpecs = []*help.Spec{

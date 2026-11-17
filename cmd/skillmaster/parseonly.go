@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // parseOnly parses one command's arguments without running it: no request, no state change, no

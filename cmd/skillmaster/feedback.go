@@ -13,9 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/feedback"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/feedback"
+	"github.com/skillmasterai/skillmaster-cli/internal/version"
 )
 
 // feedbackMaxCodePoints repeats the server's ceiling so an oversized document fails before it

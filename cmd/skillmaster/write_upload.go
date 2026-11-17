@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // The server's ceilings, in the client's words (v39). They are not configurable; the server remains

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // **Asking about a command never requires a credential.** Help is answered before dispatch

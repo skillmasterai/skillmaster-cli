@@ -10,8 +10,8 @@ package main
 import (
 	"context"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/apikey"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/auth"
+	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
+	"github.com/skillmasterai/skillmaster-cli/internal/auth"
 )
 
 // openBrowser is a seam, for the same reason `startLogin` is one: a test must not open a window on

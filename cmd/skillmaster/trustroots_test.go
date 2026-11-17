@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 // TestTheFallbackRootsAreForcedOnlyWhereTheProblemExists is the guard for the fix itself.

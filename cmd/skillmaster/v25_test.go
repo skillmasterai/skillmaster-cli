@@ -17,10 +17,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/prompt"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/updater"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/prompt"
+	"github.com/skillmasterai/skillmaster-cli/internal/updater"
+	"github.com/skillmasterai/skillmaster-cli/internal/version"
 )
 
 // isolateConfig keeps the config directory inside the test's own temporary home.

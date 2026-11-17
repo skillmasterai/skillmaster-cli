@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // pageSpec names one action a person confirms on the console.

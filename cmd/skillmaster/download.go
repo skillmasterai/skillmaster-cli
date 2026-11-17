@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // The sidecar is written into the download but is not one of the skill's files: it must not be

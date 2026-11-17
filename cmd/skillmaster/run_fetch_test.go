@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // **v78 A1**: the cache holds `scripts/` only. `SKILL.md` and `references/` stay on the server,

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // **T02's reverse direction, attributed to the command that reads the flag.** The earlier scan was

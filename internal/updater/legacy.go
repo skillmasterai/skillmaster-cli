@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // EnsureLegacyEntry gives this binary its pre-v29 name, next to itself.

@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/apikey"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/auth"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
+	"github.com/skillmasterai/skillmaster-cli/internal/auth"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // logout ends this machine's use of a credential, and — for a CLI login — the server's half of it.

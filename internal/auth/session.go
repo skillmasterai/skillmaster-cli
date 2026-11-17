@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/apikey"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // ErrNotSignedIn is what a command gets when there is nothing stored.

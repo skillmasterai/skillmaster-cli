@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // names turns a list into the set shape the line is computed from.

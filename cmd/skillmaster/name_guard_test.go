@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // TestTheOldCommandNameIsWrittenOnce is 验收 3 与验收 6 的守卫 (ADR 0113).
@@ -98,6 +98,7 @@ func isOldCommandName(value string) bool {
 		config.LegacyName + "-cli", // the registered OAuth client id and the keychain service,
 		// and the module path — `github.com/…/skillmaster/skillmaster-cli/…` contains both this and
 		// the slash form below, which is why the list is applied in order
+		config.LegacyName + "ai",  // the GitHub organization namespace, as in `skillmasterai/skillmaster-cli`
 		config.LegacyName + "ai.", // the domains, as in `skillmasterai.com`
 		config.LegacyName + ".ai", // and the dotted spelling, if anyone ever writes `skillmaster.ai`
 		// The publish-namespace address of our own skill, where the skill name repeats the

@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // Release is one build, as either side spells it.

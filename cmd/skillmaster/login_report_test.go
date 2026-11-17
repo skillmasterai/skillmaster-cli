@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/auth"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/auth"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // 验收 #1's sentence: right after a login, the terminal says what this machine is called, what the

@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // helpRequest answers a help request before anything else happens: before authentication, before

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // The same budget the archive path uses: a body at the ceiling on a slow link is not a hung one.

@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // myWhenToUseVerb reads and writes the caller's own sentence on a skill (v59).

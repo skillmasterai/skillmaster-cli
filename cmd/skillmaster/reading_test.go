@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pins"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/pins"
 )
 
 // withTempHome points this machine's config directory at a temporary one, so a test exercises the pin

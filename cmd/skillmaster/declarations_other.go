@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // otherSpecs is the `skills` and `version` subtrees: 9 + 14 command paths.
 var otherSpecs = []*help.Spec{

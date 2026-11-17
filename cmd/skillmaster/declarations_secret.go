@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // secretSpecs is the `secret` group (v52): the vault, the bindings, and the two directions of
 // sharing. **`share` exists but does not do the sharing** — granting somebody a value is the

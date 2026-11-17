@@ -5,3 +5,8 @@
 
 # 连本机的那个：不发布、不进仓库（生产的 skmr 在 ~/.local/bin）。
 /skillmaster-dev
+
+# Release staging and build output.
+/dist/
+/.build/
+skmr.exe

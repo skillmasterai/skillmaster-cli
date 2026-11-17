@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pins"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/pins"
 )
 
 func readsFor(server string) (*pins.Reads, error) {

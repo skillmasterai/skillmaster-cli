@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pkce"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/pkce"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 // DefaultScopes is what `login` asks for.

@@ -1,4 +1,4 @@
-module github.com/lijinzhao86/skillmaster/skillmaster-cli
+module github.com/skillmasterai/skillmaster-cli
 
 go 1.26.0
 

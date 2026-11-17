@@ -10,7 +10,7 @@ import (
 //
 // **`dev` until a build fills it in.** The release pipeline passes
 //
-//	-ldflags "-X github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version.Version=1.0.0"
+//	-ldflags "-X github.com/skillmasterai/skillmaster-cli/internal/version.Version=1.0.0"
 //
 // and a plain `go build` or `go run` never does — that binary is a development build, and saying so
 // is better than inventing a number that looks like a release (ADR 0088).
@@ -36,7 +36,7 @@ var Revision = ""
 //
 // The release pipeline passes, in the same `-ldflags` line as `DefaultServer`,
 //
-//	-X github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version.UpdateBase=$BASE
+//	-X github.com/skillmasterai/skillmaster-cli/internal/version.UpdateBase=$BASE
 //
 // where `$BASE` is the channel the build belongs to: `https://dl.skillmasterai.com` for a formal
 // release and its `beta/` for a beta (ADR 0103). The downloads live in an OSS bucket behind that

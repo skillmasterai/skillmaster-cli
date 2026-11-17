@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/auth"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/auth"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // The CLI's half of v2: a key pasted in, a key refused, and a logout that only touches this machine.

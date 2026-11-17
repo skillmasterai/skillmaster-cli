@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // ADR 0179: text refusals carry code points and a field path. The field decides the sentence,

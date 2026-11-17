@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // v39's four size sentences, written from the numbers the server sends (voice-spec §上传与大小的

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/local"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/local"
 )
 
 // stateLine is the sentence `startup` prints above the journey: where this person actually is.

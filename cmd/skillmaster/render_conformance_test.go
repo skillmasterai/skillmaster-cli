@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // **T02, the direction the declaration cannot check on its own: what the renderer actually put on

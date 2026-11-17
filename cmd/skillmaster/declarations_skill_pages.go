@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // The four skill-level page actions (v37, ADR 0126): each opens the settings page after one read of
 // the author plane decides whether this credential could act. Split from `skillSpecs` so neither

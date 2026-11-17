@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // 下线中 is a state the listing has to name, and the date is the only part of it a caller can act on

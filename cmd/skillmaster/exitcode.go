@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // Exit codes are a public contract (ADR 0087): 0 success, 1 ordinary failure, 2 usage, 4 credential

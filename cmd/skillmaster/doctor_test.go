@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 func joined(lines []string) string { return strings.Join(lines, "\n") }

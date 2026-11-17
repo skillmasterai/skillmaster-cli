@@ -3,7 +3,7 @@ package main
 import (
 	"sort"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // commandHelp is the whole command table: 99 command paths, nine pure groups, the top level, and

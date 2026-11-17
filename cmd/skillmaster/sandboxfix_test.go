@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/agentconfig"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/agentconfig"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // The `--keyring` half of the seam main_test.go sets up. Without it, a future test that drives

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // v33 test-plan C2–C8: the refusal for a package whose names cannot be restored on every system.

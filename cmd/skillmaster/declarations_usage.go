@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // usageSpecs is `usage` (v58): the personal interaction log, its stats, and a skill's owner view.
 var usageSpecs = []*help.Spec{

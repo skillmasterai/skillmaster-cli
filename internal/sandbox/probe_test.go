@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 func findCheck(t *testing.T, report Report, name string) Check {

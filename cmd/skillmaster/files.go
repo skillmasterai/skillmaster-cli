@@ -15,7 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 	"net/http"
 	"regexp"
 	"strings"

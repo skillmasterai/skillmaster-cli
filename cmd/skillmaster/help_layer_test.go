@@ -17,7 +17,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 func helpJSONUnmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
@@ -73,28 +73,36 @@ type guideBaseline struct {
 
 func (i guideIssue) key() string { return i.Check + "\x00" + i.File + "\x00" + i.Match }
 
-// repoRoot walks up from this test file to the directory that holds both skills/ and the CLI
-// module. runtime.Caller is used instead of the working directory so the test works from any
+// helpRepoRootIfPresent walks up from this test file to the directory that holds the Guide.
+// The Guide lives in the skill repositories, not in the CLI repository, so a standalone CLI
+// checkout has no root to find: callers skip the Guide-dependent checks there instead of
+// failing. runtime.Caller is used instead of the working directory so the test works from any
 // package directory CI chooses.
-func helpRepoRoot(t *testing.T) string {
-	t.Helper()
+func helpRepoRootIfPresent() (string, bool) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("runtime.Caller failed")
+		return "", false
 	}
 	dir := filepath.Dir(file)
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "skills")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "skillmaster-cli", "go.mod")); err == nil {
-				return dir
-			}
+		if _, err := os.Stat(filepath.Join(dir, "skills", "skillmaster-guide", "SKILL.md")); err == nil {
+			return dir, true
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatalf("repo root not found from %s", file)
+			return "", false
 		}
 		dir = parent
 	}
+}
+
+func helpRepoRoot(t *testing.T) string {
+	t.Helper()
+	root, ok := helpRepoRootIfPresent()
+	if !ok {
+		t.Skip("the Guide lives in the skill repositories; this check runs there")
+	}
+	return root
 }
 
 type guideCommand struct {
@@ -910,7 +918,11 @@ func TestHelpBudgets(t *testing.T) {
 			t.Errorf("help %s is %d bytes, over %d", topic.Name, len(topic.Body), limit)
 		}
 	}
-	root := helpRepoRoot(t)
+	root, ok := helpRepoRootIfPresent()
+	if !ok {
+		t.Log("Guide content is not in this repository; skipped the Guide index budget")
+		return
+	}
 	index, err := os.ReadFile(filepath.Join(root, "skills", "skillmaster-guide", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("read the Guide index: %v", err)

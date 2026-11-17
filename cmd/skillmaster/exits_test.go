@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // Exit codes are a public contract (ADR 0087) with three projections: the declarations, the

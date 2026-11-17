@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/updater"
+	"github.com/skillmasterai/skillmaster-cli/internal/updater"
 )
 
 // TestTheWindowsHelperReplacesTheRunningBinary is the end-to-end proof of ADR 0103's Windows path.
@@ -140,12 +140,12 @@ func buildCLI(t *testing.T, outDir, version string, base ...string) string {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ldflags := "-X github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version.Version=" + version
+	ldflags := "-X github.com/skillmasterai/skillmaster-cli/internal/version.Version=" + version
 	if len(base) > 0 {
-		ldflags += " -X github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version.UpdateBase=" + base[0]
+		ldflags += " -X github.com/skillmasterai/skillmaster-cli/internal/version.UpdateBase=" + base[0]
 	}
 	command := exec.Command("go", "build", "-o", out, "-ldflags", ldflags,
-		"github.com/lijinzhao86/skillmaster/skillmaster-cli/cmd/skillmaster")
+		"github.com/skillmasterai/skillmaster-cli/cmd/skillmaster")
 	command.Dir = "../.."
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build %s: %v\n%s", version, err, output)

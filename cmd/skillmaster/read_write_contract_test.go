@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pins"
+	"github.com/skillmasterai/skillmaster-cli/internal/pins"
 )
 
 // fromFake is a draft whose files and version digest move as writes land.

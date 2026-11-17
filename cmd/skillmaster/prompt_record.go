@@ -3,8 +3,8 @@ package main
 import (
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/prompt"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/prompt"
 )
 
 // promptRecordLine is the local, best-effort answer to "have I already configured another AI?".

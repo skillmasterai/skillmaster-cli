@@ -18,8 +18,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/version"
 )
 
 // CAVariable names the optional PEM bundle of private roots. The binary reads it once, at startup.

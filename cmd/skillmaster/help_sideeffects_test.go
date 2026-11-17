@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // **验收 #21 on the real store, not on a stub.** `TestHelpHasNoSideEffects` proves the decision in

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 // Metadata is the part of the authorization server's discovery document this CLI uses.

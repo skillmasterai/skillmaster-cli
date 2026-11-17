@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/sandbox"
+	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
 // Limits. They are not paranoia about the mirror: they are what keeps a wrong address (a login

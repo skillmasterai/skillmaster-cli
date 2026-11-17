@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // What `skill invoke` puts on stdout is a document, not a dump (v23): platform-assembled

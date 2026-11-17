@@ -23,8 +23,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // secretValueLimit is the server's limit, repeated here so an oversized paste fails before it

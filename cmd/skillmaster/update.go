@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/updater"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/version"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/updater"
+	"github.com/skillmasterai/skillmaster-cli/internal/version"
 )
 
 // AutoUpdateEnv turns the automatic check off. **Only the automatic path**: `skmr update`

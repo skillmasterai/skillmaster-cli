@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // **T11 — the help eval (docs/versions/v55-help-layer/test-plan.md).** Opt-in and expensive: it runs a real

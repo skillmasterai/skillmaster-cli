@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/pkce"
+	"github.com/skillmasterai/skillmaster-cli/internal/pkce"
 )
 
 // fakeServer plays the three endpoints `login` uses, and records what it was asked.

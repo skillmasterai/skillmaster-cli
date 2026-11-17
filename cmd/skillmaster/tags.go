@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // ---------------------------------------------------------------------------

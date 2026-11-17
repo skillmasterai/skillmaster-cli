@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // memoryStore is the credential store without the disk. Counting writes is how the tests ask "was

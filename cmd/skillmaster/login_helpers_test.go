@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
 // driveTheLogin stands in for the browser: what is being pinned is that a command that needs a

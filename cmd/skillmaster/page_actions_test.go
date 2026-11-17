@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // The three answers of `skill delete` (v37, ADR 0127), end to end at the command boundary.

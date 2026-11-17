@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/apikey"
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // scriptExtensions are the arguments `run` will try to resolve inside `scripts/`.

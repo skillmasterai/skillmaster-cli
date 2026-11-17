@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/prompt"
+	"github.com/skillmasterai/skillmaster-cli/internal/prompt"
 )
 
 // `prompt` — the rule block that goes into an agent's instruction file.

@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
 // **The per-command direction lives in `flagattribution_test.go`**: a literal has to be declared on

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/api"
 )
 
 // The CLI's lifecycle verbs (v10): creating a skill from nothing, the collaborator list and its

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // skillSpecs is the `skill` subtree: its leaves, two nested groups, and their verbs. The
 // file-transfer leaves (get, and the merged `draft create` group) live beside it in their own

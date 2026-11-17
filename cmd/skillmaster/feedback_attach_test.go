@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/feedback"
+	"github.com/skillmasterai/skillmaster-cli/internal/feedback"
 )
 
 func TestFeedbackAttachCopiesAMessagePathAndPrintsJSON(t *testing.T) {

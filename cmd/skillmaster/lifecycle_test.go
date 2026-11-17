@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
 // The five v10 verbs: create, shares/unshare, request, open, and the @new form of the write

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/prompt"
+	"github.com/skillmasterai/skillmaster-cli/internal/prompt"
 )
 
 // **The four commands that wrote, located, updated or removed the copy retired with the markers**

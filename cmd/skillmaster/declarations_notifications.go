@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // notificationSpecs is the `notifications` group (v45): the feed, the two invitation answers and
 // the two request decisions.

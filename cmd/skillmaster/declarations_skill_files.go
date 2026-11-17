@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lijinzhao86/skillmaster/skillmaster-cli/internal/help"
+import "github.com/skillmasterai/skillmaster-cli/internal/help"
 
 // 取文件的两条形态：一个文件，或整版（v44 把 download 并进 --all）。
 var skillFileSpecs = []*help.Spec{
