@@ -1,0 +1,40 @@
+# A workflow's shell is checked by nothing until something runs it.
+#
+# `check-workflows.rb` runs `bash -n` over every `run:` block. The install scripts are
+# checked separately because they are what a new user runs first.
+name: Shell
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: Every run block and install script is valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: bash -n over every step
+        run: ruby .github/scripts/check-workflows.rb
+
+      - name: bash -n over the scripts
+        run: |
+          for script in .github/scripts/*.sh; do bash -n "$script"; done
+
+      - name: sh -n over the installer
+        run: sh -n install/install.sh
+
+      - name: The Windows installer parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/install/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
