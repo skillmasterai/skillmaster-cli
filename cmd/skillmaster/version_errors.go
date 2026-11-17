@@ -212,6 +212,12 @@ const importCeilingBytes = int64(128 * 1024 * 1024)
 // not thought of.
 func sizeRefusal(server *api.ServerError) (string, bool) {
 	for _, detail := range server.DetailList {
+		// **Counts are not bytes.** A closure file-count refusal carries only actual/limit counts,
+		// so it has to be read before the byte-only gate below.
+		if detail.Issue == "closure_too_many_files" && detail.LimitCount > 0 {
+			return fmt.Sprintf("运行闭包最多 %d 个文件；减少 run.json 里 files 声明的文件。",
+				detail.LimitCount), true
+		}
 		if detail.LimitBytes == 0 {
 			continue
 		}
@@ -238,9 +244,28 @@ func sizeRefusal(server *api.ServerError) (string, bool) {
 			return fmt.Sprintf("这一版超过了 %s 的上限。", mib(detail.LimitBytes)), true
 		case "too_many_files":
 			return fmt.Sprintf("这一版最多 %d 个文件。", detail.LimitBytes), true
+		case "closure_too_large":
+			return fmt.Sprintf("运行闭包有 %s，超过上限 %s；减少 run.json 里 files 声明的文件。",
+				mib(detail.ActualBytes), mib(detail.LimitBytes)), true
+		case "contract_too_large":
+			// The document, not the closure: its ceiling is small enough that MiB would round it
+			// to 0.1 (v82 audit).
+			if detail.ActualBytes > 0 {
+				return fmt.Sprintf("run.json 有 %s，超过上限 %s；它是一份声明，不是正文。",
+					sizeLabel(detail.ActualBytes), sizeLabel(detail.LimitBytes)), true
+			}
+			return fmt.Sprintf("run.json 超过上限 %s。", sizeLabel(detail.LimitBytes)), true
 		}
 	}
 	return "", false
+}
+
+// sizeLabel writes a byte ceiling the way the sentence needs it: KiB below a MiB.
+func sizeLabel(bytes int64) string {
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%d KiB", bytes/1024)
+	}
+	return mib(bytes)
 }
 
 // addressRefusal is the same sentence plus the one step a person needs after a 404 on the author

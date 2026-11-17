@@ -16,3 +16,8 @@ func ownedByMe(info os.FileInfo) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	return ok && int(stat.Uid) == os.Getuid()
 }
+
+// sharedWritable reports whether a directory's write bits let someone else write into it.
+func sharedWritable(mode os.FileMode) bool {
+	return mode.Perm()&0o022 != 0
+}

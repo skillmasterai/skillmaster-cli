@@ -44,6 +44,13 @@ func TestSizeRefusalSpeaksBothNumbers(t *testing.T) {
 			api.IssueDetail{Issue: "too_many_files", ActualBytes: 600, LimitBytes: 512},
 			"这一版最多 512 个文件。",
 		},
+		{
+			// v82's document ceiling is small; the sentence must not round 64 KiB to 0.1 MiB.
+			"an oversized run.json",
+			api.IssueDetail{Issue: "contract_too_large", ActualBytes: 70 * 1024,
+				LimitBytes: 64 * 1024},
+			"run.json 有 70 KiB，超过上限 64 KiB；它是一份声明，不是正文。",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

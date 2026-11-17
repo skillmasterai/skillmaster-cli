@@ -1,4 +1,9 @@
-// run: fetch a version into a cache and execute a command from its scripts/ directory.
+// run: fetch a version's declared closure into a cache and execute a command under its contract.
+//
+// **The version says how it runs** (ADR 0222). The contract decides what is fetched, where the
+// child starts, what PATH and PYTHONPATH it gets, and how long it may run; this file resolves the
+// version and starts the process. The command-line half lives in run_command.go and the fetch half
+// in run_fetch.go.
 
 package main
 
@@ -8,13 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -23,23 +27,18 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/config"
 )
 
-// scriptExtensions are the arguments `run` will try to resolve inside `scripts/`.
-//
-// **A whitelist rather than "anything that is not a flag".** The arguments a skill's commands take
-// are full of paths that are not scripts — an input CSV, an output directory, a URL — and rewriting
-// one of those would hand the script a path it did not ask for. Only the shapes that are actually
-// executed are touched.
-var scriptExtensions = map[string]bool{
-	".py": true, ".sh": true, ".bash": true, ".js": true, ".mjs": true,
-	".cjs": true, ".ts": true, ".rb": true, ".pl": true, ".ps1": true,
-}
-
 type runOptions struct {
 	cwd     string
 	cacheIn string
 	noCache bool
 	yes     bool
 	json    bool
+	// explain prints the effective contract and resolves nothing: it is the question "what would
+	// this run do", answered without running it.
+	explain bool
+	// with are exact paths the caller asked to bring in beyond the contract's closure. They must
+	// be in the version manifest; the answer is a local copy, not a fetch by name.
+	with []string
 }
 
 // parseRunArgs splits the flags from the address and the command.
@@ -80,6 +79,16 @@ func parseRunArgs(args []string) (runOptions, string, []string, error) {
 			opts.yes = true
 		case arg == "--json":
 			opts.json = true
+		case arg == "--explain":
+			opts.explain = true
+		case arg == "--with":
+			if index+1 >= len(args) {
+				return opts, "", nil, usagef("--with 后面要跟一个版本内的路径。%s", usageAt("run"))
+			}
+			opts.with = append(opts.with, args[index+1])
+			index++
+		case strings.HasPrefix(arg, "--with="):
+			opts.with = append(opts.with, strings.TrimPrefix(arg, "--with="))
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, "", nil, usagef("不认识的参数 %s。%s", arg, usageAt("run"))
 		default:
@@ -90,10 +99,8 @@ func parseRunArgs(args []string) (runOptions, string, []string, error) {
 		return opts, "", nil, usagef("run 要一个 skill 地址，格式：skmr run <地址> -- <命令>。%s",
 			usageAt("run"))
 	}
-	if len(command) == 0 {
-		return opts, "", nil, usagef("run 要在 -- 后面跟要执行的命令，例如 -- python3 plan.py。%s",
-			usageAt("run"))
-	}
+	// A missing command is decided after the contract is read: `default` may supply one, and
+	// `--explain` does not need one. Refusing here would make the documented `default` dead.
 	return opts, rest[0], command, nil
 }
 
@@ -166,42 +173,85 @@ func runSkill(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	for _, extra := range opts.with {
+		if err := validateWithPath(extra); err != nil {
+			// A flag's shape is the caller's mistake, not the network's: the exit code and the
+			// `--json` code both say so (v82 audit).
+			return usagef("%v%s", err, usageAt("run"))
+		}
+	}
 
-	skillDir, digest, credentials, err := resolveVersion(ctx, address, opts)
+	target, err := resolveRunTarget(ctx, address)
 	if err != nil {
 		return err
+	}
+	contract, source, problems, err := loadRunContract(ctx, target.base, target.digest,
+		opts.cacheIn, opts.noCache)
+	if err != nil {
+		return err
+	}
+	// **Not silent on an ordinary run.** A profile the server refused (or a package contract it
+	// could not apply) changes what gets fetched; printing it only in `--explain` leaves the person
+	// with the wrong closure and no reason (ADR 0222: the reason travels in `problems`).
+	if !opts.explain {
+		for _, problem := range problems {
+			fmt.Fprintf(os.Stderr, "注意：%s\n", problem)
+		}
+	}
+	if opts.explain {
+		// **The question, not the run.** Nothing is materialized and nothing is executed: the
+		// contract, where it came from and what it would fetch are the whole answer.
+		return explainRun(ctx, address, target, contract, source, problems, command, opts)
+	}
+	// **`default` is the command when the caller names none.** It resolves through the same rules
+	// as a caller-written command; a contract without one keeps the old usage error.
+	if len(command) == 0 {
+		if len(contract.Default) == 0 {
+			return usagef("run 要在 -- 后面跟要执行的命令，例如 -- python3 plan.py；"+
+				"这一版没有声明 default。%s", usageAt("run"))
+		}
+		command = contract.Default
+	}
+
+	skillDir, err := materialize(ctx, target.base, target.digest, contract, source, opts)
+	if err != nil {
+		return err
+	}
+	callerCwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("读取当前目录：%w", err)
 	}
 
 	// Everything that can fail without running anything is decided before the consent is recorded:
 	// a run that never starts must not leave a marker saying this version may be executed.
-	resolved, err := resolveCommandArgs(skillDir, command)
+	resolved, script, err := resolveRunCommand(skillDir, command)
 	if err != nil {
 		return err
 	}
-	workDir, err := workingDirectory(skillDir, opts.cwd)
+	workDir, err := workingDirectory(skillDir, contract.Cwd, script, opts.cwd, callerCwd)
 	if err != nil {
 		return err
 	}
-	if err := recordConsent(digest, opts.yes); err != nil {
+	extraEnv, err := contractEnvironment(contract, skillDir)
+	if err != nil {
+		return err
+	}
+	if err := recordConsent(target.digest, opts.yes); err != nil {
 		return err
 	}
 
 	if !opts.json {
-		fmt.Fprintf(os.Stderr, "执行 %s（sha256:%s，%s）\n", address, cacheKey(digest), workDir)
+		fmt.Fprintf(os.Stderr, "执行 %s（sha256:%s，%s）\n", address, cacheKey(target.digest), workDir)
 		// **After the header, before the script** — the same place a person reads the version it
 		// resolved to. `--json` gets the same fact as a field instead of as prose.
-		printMissingCredentials(bareAddress(address), credentials.Missing)
+		printMissingCredentials(bareAddress(address), target.credentials.Missing)
 	}
 
-	cmd := exec.CommandContext(ctx, resolved[0], resolved[1:]...)
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "SKILLMASTER_SKILL_DIR="+skillDir)
 	// **The value is put in the child's environment and nowhere else** — not on its command line,
-	// not in this process's own environment, not in the header line above (v52 / ADR 0168). Appending
-	// after `os.Environ()` is what makes the injected name win over a local one with the same name:
-	// `exec.Cmd` keeps the last entry for a duplicate key.
+	// not in this process's own environment, not in the header line above (v52 / ADR 0168).
+	credentialEnv := []string{}
 	switch {
-	case credentials.Bound:
+	case target.credentials.Bound:
 		pairs, err := leaseCredentials(ctx, bareAddress(address))
 		if err != nil {
 			// **A skill that says it has credentials and cannot get them fails here**, rather than
@@ -209,8 +259,8 @@ func runSkill(ctx context.Context, args []string) error {
 			// the server's own answer, so this is never a skill without bindings.
 			return fmt.Errorf("这个 skill 绑定了服务凭据，但没取到：%w", err)
 		}
-		cmd.Env = append(cmd.Env, pairs...)
-	case credentials.ProbeLease:
+		credentialEnv = pairs
+	case target.credentials.ProbeLease:
 		pairs, err := leaseCredentials(ctx, bareAddress(address))
 		if err != nil {
 			// **Unknown is not "none", and it is not fatal either.** A credential without
@@ -219,20 +269,48 @@ func runSkill(ctx context.Context, args []string) error {
 			fmt.Fprintf(os.Stderr, "（没能确认这个草稿绑定了哪些服务凭据：%v；"+
 				"这次照常运行，脚本可能缺少这些变量。）\n", err)
 		} else {
-			cmd.Env = append(cmd.Env, pairs...)
+			credentialEnv = pairs
 		}
 	}
+
+	// **The contract's ceiling, made a deadline, and it starts here.** ADR 0222 §决定 7:
+	// `limits.timeoutSeconds` defaults to 120; a child still running at the deadline is terminated
+	// with its process group and the run answers 124, the shell's own "timed out" code. Starting
+	// the clock after the credential lease means a slow network cannot eat a one-second budget and
+	// kill a script that never ran (v82 audit).
+	runCtx, cancel := context.WithTimeout(ctx,
+		time.Duration(contract.Limits.TimeoutSeconds)*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(runCtx, resolved[0], resolved[1:]...)
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "SKILLMASTER_SKILL_DIR="+skillDir)
+	// **PATH / PYTHONPATH / env from the contract, after `os.Environ()`** so a declaration wins over
+	// a local value with the same name (`exec.Cmd` keeps the last duplicate). The reserved
+	// `SKILLMASTER_` namespace was refused in `checkRunContract`, which is what keeps the skill
+	// directory and the credentials below the CLI's to set. Appending the lease last is what makes
+	// an injected name win over a local one with the same name.
+	cmd.Env = append(cmd.Env, extraEnv...)
+	cmd.Env = append(cmd.Env, credentialEnv...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// **The whole group dies, not only the process we started.** A launcher that spawned an
+	// interpreter, or a shell running a pipeline, leaves children behind if only the leader is
+	// killed; on timeout those children could keep writing after the run has answered.
+	configureProcessGroup(cmd)
 	runErr := cmd.Run()
 
 	code := 0
 	if runErr != nil {
 		var exited *exec.ExitError
-		if errors.As(runErr, &exited) {
+		switch {
+		case runCtx.Err() == context.DeadlineExceeded:
+			code = 124
+			fmt.Fprintf(os.Stderr, "执行超时（%d 秒），已终止。\n", contract.Limits.TimeoutSeconds)
+		case errors.As(runErr, &exited):
 			code = exited.ExitCode()
-		} else if errors.Is(runErr, exec.ErrNotFound) {
+		case errors.Is(runErr, exec.ErrNotFound):
 			return fmt.Errorf("找不到 %s。这个 skill 的命令要用它；装法见 skmr doctor。", resolved[0])
-		} else {
+		default:
 			return runErr
 		}
 	}
@@ -246,10 +324,14 @@ func runSkill(ctx context.Context, args []string) error {
 			// v52 P2: the declaration this run could not satisfy. Empty when nothing was declared
 			// or everything was bound — a script reading the result treats both the same way.
 			CredentialsMissing []string `json:"credentials_missing"`
-		}{address, "sha256:" + digest, resolved, code, skillDir,
+			// v82: which contract answered, so a script can tell an inferred default from the
+			// version's own declaration without parsing stderr.
+			ContractSource string `json:"contract_source"`
+			Cwd            string `json:"cwd"`
+		}{address, "sha256:" + target.digest, resolved, code, skillDir,
 			// An empty array rather than `null`: the field is a list, and a script that iterates it
 			// should not have to treat "nothing missing" as a different type from "some missing".
-			append([]string{}, credentials.Missing...)})
+			append([]string{}, target.credentials.Missing...), displayContractSource(source), workDir})
 		if err != nil {
 			return err
 		}
@@ -263,40 +345,114 @@ func runSkill(ctx context.Context, args []string) error {
 	return nil
 }
 
-// resolveVersion decides which version this run is for, and returns a directory holding it.
+// runTarget is the version a run is about, once the address has been answered.
+type runTarget struct {
+	base        string
+	digest      string
+	credentials runCredentials
+}
+
+// resolveRunTarget decides which version this run is for.
 //
 // **The digest is the question, and the address is how it is asked.** A version named in the
 // address answers it without the network; otherwise the server answers, and what it answered is
 // remembered so the next run can be answered offline. That remembered answer is what makes the
 // cache useful on a machine with no network — the cache is keyed by digest, and without a memory
 // there is no way to turn `dev/pdf-tools` into the digest it was last resolved to.
-func resolveVersion(ctx context.Context, address string, opts runOptions) (string, string, runCredentials, error) {
+func resolveRunTarget(ctx context.Context, address string) (runTarget, error) {
 	// A malformed address is a usage error, not a network one: without this the request path is
 	// built from the typo and the person is told the server is unreachable.
 	if err := checkAddressSyntax("run", address); err != nil {
-		return "", "", runCredentials{}, err
+		return runTarget{}, err
 	}
 	_, named, err := versionInAddress(address)
 	if err != nil {
-		return "", "", runCredentials{}, err
+		return runTarget{}, err
 	}
 	base := bareAddress(address)
 
 	digest, offlineNote, credentials, err := resolveDigest(ctx, base, address, named)
 	if err != nil {
-		return "", "", runCredentials{}, err
+		return runTarget{}, err
 	}
 	if offlineNote != "" {
 		// Always said, even under `--json`: the result line is for a program, and "this is not the
 		// current version" is for the person who has to decide whether that matters.
 		fmt.Fprintln(os.Stderr, offlineNote)
 	}
+	return runTarget{base: base, digest: digest, credentials: credentials}, nil
+}
 
-	dir, err := materialize(ctx, base, digest, opts)
+// loadRunContract asks the server what this version's effective contract is.
+//
+// **Asked on every run, cache hit or not.** A run profile can change without changing the version
+// digest (ADR 0222 后果), so the contract is the one fact the cache cannot answer for itself; the
+// directory name carries its hash, which is what keeps a changed profile from reusing the old
+// closure. The three fallbacks are all announced: a cached contract when the server cannot be
+// reached, and the inferred default when there is no answer at all (an older server, or an offline
+// machine with no cache).
+func loadRunContract(ctx context.Context, base, digest, cacheIn string,
+	noCache bool) (api.RunContract, string, []string, error) {
+	client, err := session(ctx)
 	if err != nil {
-		return "", "", runCredentials{}, err
+		if !noCache {
+			if cached, source, found := cachedRunContract(cacheIn, digest); found {
+				fmt.Fprintf(os.Stderr, "读不到凭据，用上次这一版取回时记下的运行契约（来源：%s）继续。\n",
+					displayContractSource(source))
+				return cached, source, nil, nil
+			}
+		}
+		return api.RunContract{}, "", nil, err
 	}
-	return dir, digest, credentials, nil
+	answer, err := client.AuthorRunContract(ctx, base, "sha256:"+digest)
+	if err == nil {
+		contract, checkErr := checkRunContract(answer.Contract)
+		if checkErr != nil {
+			return api.RunContract{}, "", nil, fmt.Errorf("这个版本的运行契约不合法：%w", checkErr)
+		}
+		for _, field := range answer.Warnings {
+			fmt.Fprintf(os.Stderr, "契约里有不认识的字段（已忽略）：%s\n", field)
+		}
+		return contract, answer.Source, answer.Problems, nil
+	}
+	if unreachable(err) {
+		if !noCache {
+			if cached, source, found := cachedRunContract(cacheIn, digest); found {
+				fmt.Fprintf(os.Stderr, "连不上服务端，用上次这一版取回时记下的运行契约（来源：%s）继续。\n",
+					displayContractSource(source))
+				return cached, source, nil, nil
+			}
+		}
+		fmt.Fprintln(os.Stderr, "连不上服务端，按默认运行契约（files: scripts/，cwd: script）继续。")
+		return inferredContract(), "inferred", nil, nil
+	}
+	if contractRouteMissing(err) {
+		// **A server older than v82 has no `/run` route.** The version itself resolved, so this is
+		// not "no such version"; the pre-v82 default is exactly the inferred contract and keeps the
+		// command working.
+		fmt.Fprintln(os.Stderr, "服务端没有给出这一版的运行契约（可能是旧版服务端），按默认运行契约继续。")
+		return inferredContract(), "inferred", nil, nil
+	}
+	return api.RunContract{}, "", nil, versionRefusal(err)
+}
+
+// contractRouteMissing distinguishes "this server has no contract for the version" from an answer
+// about the caller: only a 404 falls back, and a 403 keeps the rung's own sentence.
+func contractRouteMissing(err error) bool {
+	var server *api.ServerError
+	return errors.Is(err, api.ErrNotFound) ||
+		(errors.As(err, &server) && server.Status == http.StatusNotFound)
+}
+
+// displayContractSource is the word `--explain` prints for a source.
+//
+// **`in-package`, not `package`.** "package" beside a CLI whose first argument is a skill address
+// reads as the package manager; the TD's source value stays `package` on the wire.
+func displayContractSource(source string) string {
+	if source == "package" {
+		return "in-package"
+	}
+	return source
 }
 
 // resolveDigest asks the server, and falls back to the digest this machine last resolved.
@@ -501,62 +657,65 @@ func versionNotResolvable(base, pin string) error {
 		"看有哪些版本：skmr skill versions %s", base, pin, base)
 }
 
-// materialize returns a directory holding the version, fetching it when the cache does not.
+// materialize returns a directory holding the version's closure, fetching it when the cache does not.
 //
-// **A cache miss is not an error.** The directory name is the digest plus the rule version it was
-// written under (see `cacheDirName`), so a hit is a directory whose `.skillmaster-run.json` names
-// this digest and rule; anything else is fetched again. Nothing is ever removed (ADR 0101) — a stale or half-written
-// directory is named in the error instead.
+// **A cache miss is not an error.** The directory name is the digest, the rule version and the
+// effective contract's hash (see `cacheDirName`), so a hit is a directory whose
+// `.skillmaster-run.json` names this digest, rule and contract; anything else is fetched again.
+// Nothing is ever removed (ADR 0101) — a stale or half-written directory is named in the error
+// instead.
 //
 // **The fetch carries the digest it was resolved for.** Asking for "whatever is current" a second
 // time is how a publish between the two calls lands another version's bytes in this digest's
 // directory, after which every later run of that digest gets the wrong content with no way to see
 // it. The answer is checked against the digest as well, because the pin is a request rather than a
 // promise.
-func materialize(ctx context.Context, base, digest string, opts runOptions) (string, error) {
+func materialize(ctx context.Context, base, digest string, contract api.RunContract, source string,
+	opts runOptions) (string, error) {
+	hash := contractHash(contract)
 	if opts.noCache {
 		parent, err := os.MkdirTemp("", config.Name+"-run-")
 		if err != nil {
 			return "", fmt.Errorf("创建临时目录：%w", err)
 		}
 		target := filepath.Join(parent, "skill")
-		if err := fetchScripts(ctx, base, digest, target); err != nil {
+		if err := fetchClosure(ctx, base, digest, target, contract, source, opts.with); err != nil {
 			return "", unableToFetch(err)
 		}
 		return target, nil
 	}
 
-	root := opts.cacheIn
-	if root == "" {
-		// `config.Name` rather than the state directory's `skillmaster`: the cache did not exist
-		// before this version, so it can carry the command's own name — while the state directory's
-		// spelling is frozen by every machine that already signed in under it (see config.stateDir).
-		root = filepath.Join(os.TempDir(), config.Name, "cache")
-		// **`$TMPDIR` is `/tmp` on Linux, and the cache is keyed by a public digest.** A directory
-		// another user created there would be content this run executes under a name it did not
-		// earn. The root is used only when it is this user's and not writable by anyone else;
-		// otherwise this run gets a private directory of its own.
-		if err := privateCacheRoot(root); err != nil {
-			parent, mkErr := os.MkdirTemp("", config.Name+"-cache-")
-			if mkErr != nil {
-				return "", fmt.Errorf("创建临时目录：%w", mkErr)
-			}
-			fmt.Fprintf(os.Stderr, "缓存目录 %s 不可信（%v），这次改用 %s。\n", root, err, parent)
-			root = parent
-		}
+	// `config.Name` rather than the state directory's `skillmaster`: the cache did not exist before
+	// this version, so it can carry the command's own name — while the state directory's spelling is
+	// frozen by every machine that already signed in under it (see config.stateDir).
+	root, err := runCacheRoot(opts.cacheIn)
+	if err != nil {
+		return "", err
 	}
-	target := filepath.Join(root, cacheDirName(digest))
-	if hasRunMarker(target, digest) {
+	target := filepath.Join(root, cacheDirName(digest, hash))
+	if hasRunMarker(target, digest, hash) {
+		// **`--with` is satisfied from the copy already here.** A file recorded by an earlier run is
+		// reused without asking the server; only a path this directory has never held is fetched.
+		if err := ensureWithFiles(ctx, base, digest, target, opts.with,
+			executablePrefixes(contract)); err != nil {
+			return "", err
+		}
 		return target, nil
 	}
 	if _, err := os.Stat(target); err == nil {
 		return "", fmt.Errorf("%s 已存在但没有本版缓存标记（上次取回可能中断，或这是旧版缓存）。"+
 			"确认后请自行删掉它，或加 --no-cache 换一个临时目录。", target)
 	}
-	if err := fetchScripts(ctx, base, digest, target); err != nil {
+	if err := fetchClosure(ctx, base, digest, target, contract, source, opts.with); err != nil {
 		// Two runs of the same version at once unpack into two staging directories and race to
 		// rename; the loser sees a non-empty target. The winner's copy is the answer, not a failure.
-		if hasRunMarker(target, digest) {
+		if hasRunMarker(target, digest, hash) {
+			// The race branch returns the winner's copy; the extras this run asked for still have
+			// to be satisfied here, exactly as on an ordinary cache hit.
+			if err := ensureWithFiles(ctx, base, digest, target, opts.with,
+				executablePrefixes(contract)); err != nil {
+				return "", err
+			}
 			return target, nil
 		}
 		return "", unableToFetch(err)
@@ -573,14 +732,26 @@ func privateCacheRoot(root string) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err
 	}
+	return cacheRootTrust(root)
+}
+
+// cacheRootTrust is the same question without creating anything, for `--explain` — which must
+// answer without materializing a directory the run has not agreed to use yet.
+func cacheRootTrust(root string) error {
 	info, err := os.Stat(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return err
+	}
+	if !info.IsDir() {
+		return errors.New("不是目录")
 	}
 	if !ownedByMe(info) {
 		return errors.New("不是你的目录")
 	}
-	if info.Mode().Perm()&0o022 != 0 {
+	if sharedWritable(info.Mode()) {
 		return errors.New("别人也能写")
 	}
 	return nil
@@ -719,157 +890,4 @@ func recordConsent(digest string, yes bool) error {
 		return fmt.Errorf("记录执行确认：%w", err)
 	}
 	return nil
-}
-
-// resolveCommandArgs turns the script paths in a command into absolute ones.
-//
-// **Only `scripts/` is rewritten**, and only when the answer is unique. The convention this
-// implements is the version's own: code that may be executed lives in `scripts/` (ADR 0165), and a
-// name that matches two files there is refused rather than guessed — running the wrong file is
-// worse than stopping.
-func resolveCommandArgs(skillDir string, command []string) ([]string, error) {
-	scripts := filepath.Join(skillDir, "scripts")
-	out := make([]string, len(command))
-	copy(out, command)
-	// The first word is the interpreter; a path there is the caller's business, not ours.
-	for index := 1; index < len(out); index++ {
-		arg := out[index]
-		if filepath.IsAbs(arg) || strings.HasPrefix(arg, "-") || !scriptExtensions[strings.ToLower(filepath.Ext(arg))] {
-			continue
-		}
-		resolved, err := resolveInsideScripts(scripts, arg)
-		if err != nil {
-			return nil, err
-		}
-		out[index] = resolved
-	}
-	return out, nil
-}
-
-func resolveInsideScripts(scripts, arg string) (string, error) {
-	// **An argument that climbs out of `scripts/` is not a name to look up.** `../x.py` would
-	// otherwise reach the basename search below and quietly run `scripts/x.py` — a different file
-	// from the one written in the command. Not-found is the answer, with the usual candidate list.
-	if strings.HasPrefix(path.Clean(filepath.ToSlash(arg)), "..") {
-		return "", fmt.Errorf("scripts/ 下没有 %s，现有：%s", arg, listScripts(scripts))
-	}
-	direct := filepath.Join(scripts, filepath.FromSlash(arg))
-	if isFile(direct) && inside(scripts, direct) {
-		return direct, nil
-	}
-	matches := findBaseName(scripts, filepath.Base(arg))
-	switch len(matches) {
-	case 1:
-		return matches[0], nil
-	case 0:
-		return "", fmt.Errorf("scripts/ 下没有 %s，现有：%s", arg, listScripts(scripts))
-	default:
-		return "", fmt.Errorf("scripts/ 下有 %d 个 %s：%s；请写清相对路径",
-			len(matches), filepath.Base(arg), strings.Join(relativeTo(scripts, matches), "、"))
-	}
-}
-
-// inside says whether path is a descendant of dir, after both are made absolute.
-func inside(dir, path string) bool {
-	relative, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func findBaseName(dir, name string) []string {
-	var found []string
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		if entry.IsDir() {
-			found = append(found, findBaseName(path, name)...)
-			continue
-		}
-		if entry.Name() == name {
-			found = append(found, path)
-		}
-	}
-	return found
-}
-
-func listScripts(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "（读不出来）"
-	}
-	var names []string
-	for _, entry := range entries {
-		if entry.IsDir() || !scriptExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
-			continue
-		}
-		names = append(names, entry.Name())
-	}
-	if len(names) == 0 {
-		return "（没有脚本）"
-	}
-	sort.Strings(names)
-	return strings.Join(names, "、")
-}
-
-func relativeTo(base string, paths []string) []string {
-	out := make([]string, len(paths))
-	for index, path := range paths {
-		if rel, err := filepath.Rel(base, path); err == nil {
-			out[index] = filepath.ToSlash(rel)
-			continue
-		}
-		out[index] = path
-	}
-	return out
-}
-
-// workingDirectory is `scripts/` unless told otherwise, because that is the directory the two
-// existing spellings of a command agree on.
-//
-// `python x.py` only works from `scripts/`; `python scripts/x.py` is rewritten to an absolute path
-// before the child starts, so it works from anywhere. Defaulting to `scripts/` therefore runs both
-// kinds, while defaulting to the skill root would run only one.
-func workingDirectory(skillDir, requested string) (string, error) {
-	if requested != "" {
-		if filepath.IsAbs(requested) {
-			return requested, nil
-		}
-		return filepath.Join(skillDir, requested), nil
-	}
-	scripts := filepath.Join(skillDir, "scripts")
-	if info, err := os.Stat(scripts); err == nil && info.IsDir() {
-		return scripts, nil
-	}
-	return skillDir, nil
-}
-
-func isFile(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
-func cacheKey(digest string) string {
-	if len(digest) > 16 {
-		return digest[:16]
-	}
-	return digest
-}
-
-// cacheRuleVersion is the rule the directories under the cache were written with.
-//
-// **A digest names the file bytes, not their permissions** (ADR 0166): the bit is derived from the
-// path, so a change to that rule delivers the same digest with different modes. Since v78 the rule
-// also covers the fetch scope — a directory holds `scripts/` only (ADR 0217) — and the marker that
-// replaces `SKILL.md` as the hit test. Directories written under an older rule are a miss, not a
-// hit: nothing removes a cache (ADR 0101), so an `-r2` tree would otherwise be reused as if it had
-// been written by this rule.
-const cacheRuleVersion = 3
-
-func cacheDirName(digest string) string {
-	return fmt.Sprintf("%s-r%d", cacheKey(digest), cacheRuleVersion)
 }
