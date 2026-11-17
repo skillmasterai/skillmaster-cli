@@ -34,6 +34,16 @@ jobs:
   beta:
     name: Build and publish the beta
     runs-on: ubuntu-latest
+    # Same protected environment as the formal release: the signing key is readable only after
+    # a person approves the run.
+    environment: release
+    # The beta page advertises the same three proofs as the formal one, so the beta pipeline
+    # produces them too. Without these permissions the page would promise verification that
+    # every beta release fails.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     # One beta at a time. The keys carry no version, so two runs at once can interleave one
     # build's packages with another's checksums.txt, and each can still pass its own check.
     concurrency:
@@ -140,6 +150,34 @@ jobs:
           ( cd "$GITHUB_WORKSPACE/install" && sha256sum install.sh install.ps1 ) >> checksums.txt
           cat checksums.txt
 
+      - name: Sign the checksums (cosign keyless)
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the checksums with cosign
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle dist/checksums.txt.sigstore.json dist/checksums.txt
+
+      - name: Sign the checksums with minisign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is empty — refusing to publish an unsigned beta"
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign
+          install -d "$RUNNER_TEMP/minisign"
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign/minisign.key"
+          chmod 600 "$RUNNER_TEMP/minisign/minisign.key"
+          minisign -S -s "$RUNNER_TEMP/minisign/minisign.key" \
+            -x dist/checksums.txt.minisig -m dist/checksums.txt \
+            -t "skillmaster ${VERSION}"
+          minisign -V -p minisign.pub -x dist/checksums.txt.minisig -m dist/checksums.txt
+          cp minisign.pub dist/minisign.pub
+
       # The build exiting 0 does not mean the address went in — `-X` names a symbol, and a symbol
       # that does not exist is not an error. Ask the binary. Both values are checked: a beta whose
       # revision did not take prints a version that names two builds at once.
@@ -164,22 +202,28 @@ jobs:
             *) echo "::error::--version printed '$printed', expected it to name both $VERSION and $REVISION"; exit 1 ;;
           esac
 
-      # **A pinned static binary, not `apt-get`** — the runner image sometimes ships rclone and
-      # sometimes does not. `cli-release.yml` records the release that spent minutes inside
-      # `apt-get update`; the reasoning is the same here, and so is the fallback.
+      - name: Attest the beta artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/skillmaster_*.tar.gz
+            dist/skillmaster_*.zip
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+            dist/checksums.txt.minisig
+            dist/minisign.pub
+            install/install.sh
+            install/install.ps1
+
       - name: Install rclone
         run: |
           set -euo pipefail
-          version=1.68.1
-          if timeout 180 curl -fsSL --retry 3 -o /tmp/rclone.zip \
-               "https://downloads.rclone.org/v${version}/rclone-v${version}-linux-amd64.zip"; then
-            unzip -q -o /tmp/rclone.zip -d /tmp/rclone
-            sudo install -m 0755 "/tmp/rclone/rclone-v${version}-linux-amd64/rclone" /usr/local/bin/rclone
-          else
-            echo "downloads.rclone.org unreachable — falling back to apt"
-            timeout 240 sudo apt-get update -qq
-            timeout 240 sudo apt-get install -y -qq rclone
-          fi
+          # **The distro package, not a downloaded zip.** A zip from downloads.rclone.org had no
+          # checksum or signature; this binary then ran as root and received the release bucket
+          # credentials. apt's archive is signed by the distribution, and the runner image does
+          # not always ship rclone, so this is the one path that is both available and verifiable.
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq rclone
           rclone version | head -1
 
       # rclone's S3 backend speaks OSS's S3-compatible endpoint, under a remote named `dl`.
@@ -216,13 +260,14 @@ jobs:
           staging="${PREFIX}releases/${VERSION}-${REVISION}"
           echo "path=$staging" >> "$GITHUB_OUTPUT"
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
+                   dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
             rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
               "$f" "dl:${OSS_BUCKET}/${staging}/$(basename "$f")"
           done
           rclone lsf --s3-no-check-bucket "dl:${OSS_BUCKET}/${staging}" | sort
 
-      - name: The staging area holds all nine objects
+      - name: The staging area holds all twelve objects
         env:
           STAGING: ${{ steps.stage.outputs.path }}
         run: |
@@ -235,10 +280,14 @@ jobs:
             got="$(sha256sum "/tmp/$name" | awk '{ print $1 }')"
             [ "$want" = "$got" ] || { echo "::error::staged $name differs from checksums.txt"; exit 1; }
           done
-          for name in checksums.txt install.sh install.ps1; do
+          for name in checksums.txt checksums.txt.sigstore.json checksums.txt.minisig \
+                      minisign.pub install.sh install.ps1; do
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
           done
           cmp /tmp/checksums.txt dist/checksums.txt
+          cmp /tmp/checksums.txt.sigstore.json dist/checksums.txt.sigstore.json
+          cmp /tmp/checksums.txt.minisig dist/checksums.txt.minisig
+          cmp /tmp/minisign.pub dist/minisign.pub
           cmp /tmp/install.sh install/install.sh
           cmp /tmp/install.ps1 install/install.ps1
           for name in install.sh install.ps1; do
@@ -248,7 +297,7 @@ jobs:
           done
           echo "the staging area is complete and byte-identical to the build"
 
-      # The nine objects, then the header check, then the marker — §6's order. `no-cache` matters
+      # The twelve objects, then the header check, then the marker — §6's order. `no-cache` matters
       # more here than anywhere: the beta keys do not carry a version either, and a cached copy
       # would leave a tester on the previous build while every check on this side says the new one
       # is live.
@@ -259,6 +308,7 @@ jobs:
           set -euo pipefail
           objects() {
             printf '%s\n' dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
+              dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
               install/install.sh install/install.ps1
           }
           while IFS= read -r f; do
@@ -305,7 +355,7 @@ jobs:
               esac
             done
           fi
-          echo "Cache-Control: no-cache is on all nine beta objects"
+          echo "Cache-Control: no-cache is on all twelve beta objects"
 
       # **The marker carries the build.** The version string cannot tell two betas apart, so this
       # object is the answer to "which build is the channel serving" — and it is written last, once

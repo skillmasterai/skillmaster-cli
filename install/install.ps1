@@ -105,7 +105,7 @@ try {
     } catch {
         $staged = Join-Path $InstallDir ('skmr.exe.new.' + [System.Guid]::NewGuid().ToString('N'))
         try { Copy-Item -Path (Join-Path $tmp 'skmr.exe') -Destination $staged -Force -ErrorAction Stop }
-        catch { Die "复制失败：$InstallDir（如果是在 agent 沙箱里，请让 agent 把这条安装命令放到沙箱外跑，或在你自己的终端安装）" }
+        catch { Die "复制失败：$InstallDir（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）" }
         try {
             if (Test-Path $target) {
                 [System.IO.File]::Replace($staged, $target, $null)
@@ -113,7 +113,7 @@ try {
                 [System.IO.File]::Move($staged, $target)
             }
         } catch {
-            Die "写不进 $target，也改不了名：如果是在 agent 沙箱里，请让 agent 把这条安装命令放到沙箱外跑，或在你自己的终端安装"
+            Die "写不进 $target，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
         }
     }
 
@@ -147,7 +147,7 @@ try {
     Say '已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。'
     Say '人自己在终端装的话，可以运行下面这条读引导正文：'
     Say ('  & "' + $target + '" startup')
-    Say '云端 / 远程 Agent（每开一个会话就是新环境）按安装说明第 30 行处理。'
+    Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } finally {
     # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it
     # is not covered by removing $tmp: a failed replace would otherwise leave it beside the old

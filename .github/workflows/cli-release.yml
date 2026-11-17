@@ -32,6 +32,10 @@ jobs:
   build:
     name: Build every package
     runs-on: ubuntu-latest
+    # The signing key lives in this environment, behind a required reviewer: a commit that
+    # reaches main still cannot read it without a person approving the run. The tag run waits
+    # for that approval before it builds anything.
+    environment: release
     # `id-token` is what lets cosign sign with the workflow's own OIDC identity and what
     # `actions/attest-build-provenance` turns into a build-provenance attestation;
     # `attestations: write` is where that attestation is stored.
@@ -275,24 +279,15 @@ jobs:
           name: cli-packages
           path: dist
 
-      # **A pinned static binary, not `apt-get`.** The runner image sometimes ships rclone and
-      # sometimes does not: one release spent a second here, the next sat inside `apt-get update`
-      # for minutes — `-qq` prints nothing, and nothing bounded it. A download is one file, a fixed
-      # version and a hard timeout. apt stays as the fallback, with timeouts of its own, because
-      # downloads.rclone.org is reachable from most runners and not all.
       - name: Install rclone
         run: |
           set -euo pipefail
-          version=1.68.1
-          if timeout 180 curl -fsSL --retry 3 -o /tmp/rclone.zip \
-               "https://downloads.rclone.org/v${version}/rclone-v${version}-linux-amd64.zip"; then
-            unzip -q -o /tmp/rclone.zip -d /tmp/rclone
-            sudo install -m 0755 "/tmp/rclone/rclone-v${version}-linux-amd64/rclone" /usr/local/bin/rclone
-          else
-            echo "downloads.rclone.org unreachable — falling back to apt"
-            timeout 240 sudo apt-get update -qq
-            timeout 240 sudo apt-get install -y -qq rclone
-          fi
+          # **The distro package, not a downloaded zip.** A zip from downloads.rclone.org had no
+          # checksum or signature; this binary then ran as root and received the release bucket
+          # credentials. apt's archive is signed by the distribution, and the runner image does
+          # not always ship rclone, so this is the one path that is both available and verifiable.
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq rclone
           rclone version | head -1
 
       # **A config file, because an environment variable cannot create a remote.** `RCLONE_CONFIG_*`
