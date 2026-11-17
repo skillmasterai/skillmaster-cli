@@ -95,16 +95,18 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 | 证书 | ECS 上的 certbot，**DNS-01**：`dl.` 的 TXT 记录由 `/etc/skillmaster/acme/auth.sh` 写入 Aliyun DNS，续期由 `certbot.timer` 自动完成 |
 | `Cache-Control` | **`no-cache`**——键名不带版本号，一缓存就会有人下到上一版；宁可每次回源 |
 
-**不放 GitHub Releases**：目标用户在国内，那个域名对他们不可用。git tag 仍然标记版本历史，但**产物只有一个家**。
+**不放 GitHub Releases**：目标用户在国内，那个域名对他们不可用。git tag 仍然标记版本历史，但**产物只有一个家**。构建来源证明（attestation）存在 GitHub 上，它证明的是「这些字节由哪条工作流、哪个提交构建」，不是产物的下载地址。
 
-**上传顺序**：先六个包 → 再 `checksums.txt` → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
+**可验证性**：每次发布同时产出两类独立证明。`checksums.txt.sigstore.json` 是 cosign keyless 签名，绑定本仓库工作流的 GitHub OIDC 身份并记入 Sigstore 透明日志；`checksums.txt.minisig` 是 minisign 签名，配合同次发布的 `minisign.pub`，可以完全离线验证。GitHub 的构建来源证明用 `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli` 核对。三者证明的是不同的事：签名说明「这次发布由谁签」，attestation 说明「这些字节由哪次构建产生」。
+
+**上传顺序**：先六个包 → 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
 
 **先暂存，再动线上的键。** 键名不带版本号，一次传到一半就会留下「一版的包 + 另一版的校验和」，那三平台上的安装全部失败。所以先传进 `releases/<版号>/`，在那里逐个核对，再逐个搬到正式键上。S3 没有多对象提交，窗口只能缩短、不能关闭——窗口很短，安装脚本本身会失败退出，重跑同一个 tag 能补齐（见上一条的例外）。
 
 **暂存的前缀是公开的、不会自动清理的。** `releases/<版号>/` 在同一个公共读 bucket 里，所以整份也
 可以按地址取到（`https://dl.skillmasterai.com/releases/<版号>/…`）。它同时是**手工恢复**时唯一
 现成的来源——但**「重跑旧 tag」不是恢复手段**，那会被下面的守卫直接拒绝。恢复是两步手工动作：
-把那一版的九个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
+把那一版的十二个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
 「新标记 + 旧产物」；改回去，那个旧版号也就重新可以发了）。代价值得写下来——每次正式发布会留下
 约 50 MB，删旧前缀是手工动作，见 [部署说明](../deploy/README.md)。
 

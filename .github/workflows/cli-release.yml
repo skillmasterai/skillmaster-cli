@@ -32,6 +32,13 @@ jobs:
   build:
     name: Build every package
     runs-on: ubuntu-latest
+    # `id-token` is what lets cosign sign with the workflow's own OIDC identity and what
+    # `actions/attest-build-provenance` turns into a build-provenance attestation;
+    # `attestations: write` is where that attestation is stored.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       formal: ${{ steps.version.outputs.formal }}
@@ -150,6 +157,54 @@ jobs:
           sha256sum skillmaster_*.tar.gz skillmaster_*.zip > checksums.txt
           ( cd "$GITHUB_WORKSPACE/install" && sha256sum install.sh install.ps1 ) >> checksums.txt
           cat checksums.txt
+
+      # **Two independent signatures over one file.** cosign binds `checksums.txt` to this
+      # workflow's GitHub OIDC identity and records it in Sigstore's public transparency log;
+      # minisign lets a machine verify the same bytes offline, against a public key that does not
+      # need GitHub, Sigstore, or a network round trip. Neither one replaces the other.
+      - name: Sign the checksums (cosign keyless)
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the checksums with cosign
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle dist/checksums.txt.sigstore.json dist/checksums.txt
+
+      - name: Sign the checksums with minisign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is empty — refusing to publish an unsigned release"
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign
+          install -d "$RUNNER_TEMP/minisign"
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign/minisign.key"
+          chmod 600 "$RUNNER_TEMP/minisign/minisign.key"
+          minisign -S -s "$RUNNER_TEMP/minisign/minisign.key" \
+            -x dist/checksums.txt.minisig -m dist/checksums.txt \
+            -t "skillmaster ${{ steps.version.outputs.version }}"
+          minisign -V -p minisign.pub -x dist/checksums.txt.minisig -m dist/checksums.txt
+          cp minisign.pub dist/minisign.pub
+
+      # **Provenance, not a signature.** This says the files were built by this workflow from this
+      # commit in this public repository; `gh attestation verify <file> --repo` checks it. The
+      # signatures above say the release was signed; this says how the bytes came to exist.
+      - name: Attest the release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/skillmaster_*.tar.gz
+            dist/skillmaster_*.zip
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+            dist/checksums.txt.minisig
+            dist/minisign.pub
+            install/install.sh
+            install/install.ps1
 
       # The build exiting 0 does not mean the address went in: `-X` names a symbol, and a symbol
       # that does not exist is not an error. Ask the built binary instead of the command that
@@ -316,13 +371,14 @@ jobs:
           # permission the release key has no reason to hold.
           staging="dl:${OSS_BUCKET}/releases/${VERSION}"
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
+                   dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
             rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
               "$f" "$staging/$(basename "$f")"
           done
           rclone lsf --s3-no-check-bucket "$staging" | sort
 
-      - name: The staging area holds all nine objects
+      - name: The staging area holds all twelve objects
         run: |
           set -euo pipefail
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/releases/${VERSION}"
@@ -333,10 +389,14 @@ jobs:
             got="$(sha256sum "/tmp/$name" | awk '{ print $1 }')"
             [ "$want" = "$got" ] || { echo "::error::staged $name differs from checksums.txt"; exit 1; }
           done
-          for name in checksums.txt install.sh install.ps1; do
+          for name in checksums.txt checksums.txt.sigstore.json checksums.txt.minisig \
+                      minisign.pub install.sh install.ps1; do
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
           done
           cmp /tmp/checksums.txt dist/checksums.txt
+          cmp /tmp/checksums.txt.sigstore.json dist/checksums.txt.sigstore.json
+          cmp /tmp/checksums.txt.minisig dist/checksums.txt.minisig
+          cmp /tmp/minisign.pub dist/minisign.pub
           cmp /tmp/install.sh install/install.sh
           cmp /tmp/install.ps1 install/install.ps1
           for name in install.sh install.ps1; do
@@ -354,10 +414,11 @@ jobs:
         run: |
           set -euo pipefail
           staging="dl:${OSS_BUCKET}/releases/${VERSION}"
-          # The nine objects, in §6's order, in one place: the promote loop, the header check and
-          # the repair all have to mean the same nine or the check is a spot check.
+          # The twelve objects, in §6's order, in one place: the promote loop, the header check and
+          # the repair all have to mean the same twelve or the check is a spot check.
           objects() {
             printf '%s\n' dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
+              dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
               install/install.sh install/install.ps1
           }
           promote_from_staging() {
@@ -422,7 +483,7 @@ jobs:
               esac
             done
           fi
-          echo "Cache-Control: no-cache is on all nine live objects"
+          echo "Cache-Control: no-cache is on all twelve live objects"
 
           printf '%s\n' "$VERSION" > /tmp/version.txt
           rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
@@ -438,7 +499,7 @@ jobs:
             "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/version.txt")" || marker_status=000
           marker="$(cat /tmp/marker 2>/dev/null || true)"
           if [ "$marker_status" != "200" ] || [ "$marker" != "$VERSION" ]; then
-            echo "::error::the nine objects are live but version.txt answers HTTP $marker_status and says '$marker' instead of '$VERSION'; re-run this tag to finish"
+            echo "::error::the twelve objects are live but version.txt answers HTTP $marker_status and says '$marker' instead of '$VERSION'; re-run this tag to finish"
             exit 1
           fi
 
@@ -468,10 +529,14 @@ jobs:
           # was the only published artifact this job never read back. `install.sh` fetches it from
           # the same origin as the package, so a truncated or stale copy breaks every install while
           # the six packages below are perfect.
-          for name in checksums.txt install.sh install.ps1; do
+          for name in checksums.txt checksums.txt.sigstore.json checksums.txt.minisig \
+                      minisign.pub install.sh install.ps1; do
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
           done
           cmp /tmp/checksums.txt dist/checksums.txt
+          cmp /tmp/checksums.txt.sigstore.json dist/checksums.txt.sigstore.json
+          cmp /tmp/checksums.txt.minisig dist/checksums.txt.minisig
+          cmp /tmp/minisign.pub dist/minisign.pub
           cmp /tmp/install.sh install/install.sh
           cmp /tmp/install.ps1 install/install.ps1
           echo "all six packages, checksums.txt and both installers are served byte for byte"
