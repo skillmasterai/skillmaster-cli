@@ -385,6 +385,10 @@ jobs:
     # credentials could not be environment-scoped. The same tag answers the same question twice —
     # GitHub approves per job, so this job asks for its own approval after `build`.
     environment: release
+    # Creating the GitHub Release that mirrors these bytes needs to write to the repository; that is
+    # the only repository write this job performs, and it is scoped to this job.
+    permissions:
+      contents: write
     # **Publish runs queue; builds do not.** The keys carry no version, so two publish jobs at once
     # can interleave one version's packages with another's checksums.txt and each can still pass its
     # own check. Scoped to this job because a prerelease build has nothing to collide with.
@@ -718,3 +722,41 @@ jobs:
           url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/install.sh"
           curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
           echo "the bucket serves install.sh"
+          curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
+          echo "the bucket serves install.sh"
+
+      # **The same bytes at a second origin, for readers with no tools.** Every other proof on the
+      # install page needs something installed: minisign, cosign, or `gh`. A reader with none of
+      # them can still fetch `checksums.txt` from the download site and from this release and
+      # compare the two — nothing but `curl` and `cmp` (or `Invoke-WebRequest` on Windows). That
+      # answers a narrower question than a signature ("do the two origins agree?"), and it is the
+      # only one that reader can ask; serving them different bytes now takes both the bucket and
+      # this repository.
+      #
+      # A rehearsal stays out: its tag is not a release anyone should download.
+      - name: Publish the same files as a GitHub Release
+        if: needs.build.outputs.channel != 'test'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=(
+            dist/skillmaster_*.tar.gz
+            dist/skillmaster_*.zip
+            dist/skillmaster.tgz
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+            dist/checksums.txt.minisig
+            dist/minisign.pub
+            install/install.sh
+            install/install.ps1
+          )
+          notes="The same bytes as https://dl.skillmasterai.com. On a machine with no minisign, no cosign and no gh: download checksums.txt from both places and compare them."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Re-running a tag is how a half-finished publication is repaired; the assets follow.
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "$VERSION" --notes "$notes" --verify-tag
+          fi
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | sort
