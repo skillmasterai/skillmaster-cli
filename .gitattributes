@@ -17,3 +17,8 @@ skills/skillmaster-guide/** -text
 # **The startup journey is read line by line.** Same reason as the Guide: a line-ending rewrite on a
 # Windows checkout would change the bytes the journey is published from.
 skills/skillmaster-startup/** -text
+
+# **The installers are hashed and run as bytes.** `install.sh` is executed by `sh`, so a Windows
+# checkout with `core.autocrlf=true` would give every line a trailing `\r` and break `case`
+# statements; `install.ps1` carries a UTF-8 BOM that the checksum covers. Keep both as committed.
+install/** -text

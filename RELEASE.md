@@ -149,7 +149,9 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 ```
 curl -fsSL https://dl.skillmasterai.com/install.sh | sh     # macOS / Linux
-irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
+# Windows：照 https://dl.skillmasterai.com/skillmaster.md 那一块做——它先把 install.ps1 落到
+# 本地、按已校验的清单核对指纹，再运行。**不要写 `irm … | iex`**：PowerShell 5.1 对没有 charset
+# 的响应按 ISO-8859-1 解码，脚本里的中文会变成乱码，BOM 也救不了这条路（BOM 只管读文件）。
 ```
 
 **信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——一行式 `curl | sh` / `irm | iex` 不会带来它本来就没有的安全，它们只是最短路径。安装页给出的验证流程是：先核对 `checksums.txt` 的签名或构建来源证明，再核对脚本的 SHA-256，最后把已核对的清单传给安装器（`SKILLMASTER_CHECKSUMS`）。
