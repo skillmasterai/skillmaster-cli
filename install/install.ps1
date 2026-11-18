@@ -14,8 +14,12 @@
 # (`x86`) cannot run an amd64 binary, and Windows on ARM gets a real arm64 package, so there is
 # nothing left for a fallback to rescue.
 #
-# Usage:  irm https://dl.skillmasterai.com/install.ps1 | iex
+# Usage: see https://dl.skillmasterai.com/skillmaster.md — the page downloads this file, checks it
+# against the signed manifest and then runs it. Do not advertise `irm … | iex` here: PowerShell 5.1
+# decodes a response with no charset as ISO-8859-1, so the Chinese below would arrive as mojibake
+# even with the BOM (the BOM fixes reading the file, not decoding a string from the wire).
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 # Windows PowerShell 5.1 on .NET Framework 4.5/4.6 negotiates SSL3|TLS1.0 by default, and the
 # download host speaks TLS 1.2 and 1.3 only — the first request would die as a generic
@@ -24,11 +28,22 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 } catch { }
 
+# **The BOM fixes parsing, not display.** Write-Host goes through the console's output encoding; on
+# a Windows whose code page is not 936 (English, Japanese, …) the CJK below renders as `?`. Asking
+# the console for UTF-8 is the documented knob for that; `$OutputEncoding` is a different one (it
+# governs text sent *to* native processes). Legacy conhost with a non-CJK font may still box glyphs.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch { }
+
 $BaseUrl = if ($env:SKILLMASTER_DL_URL) { $env:SKILLMASTER_DL_URL } else { 'https://dl.skillmasterai.com' }
 $InstallDir = if ($env:SKILLMASTER_INSTALL_DIR) { $env:SKILLMASTER_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'SkillMaster\bin' }
 
 function Say([string]$Message) { Write-Host $Message }
-function Die([string]$Message) { Write-Error "install: $Message"; exit 1 }
+# **Console, not Write-Error.** Under `$ErrorActionPreference = 'Stop'`, Write-Error is a
+# terminating error, so the `exit 1` after it never ran and the user got a multi-line error record
+# pointing at this line instead of the one line that says what happened.
+function Die([string]$Message) { [Console]::Error.WriteLine("install: $Message"); exit 1 }
 
 # --- 1. Pick the package -----------------------------------------------------
 
@@ -133,13 +148,39 @@ try {
 
     # --- 5. Say what to do next -----------------------------------------------
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if (($userPath -split ';') -notcontains $InstallDir) {
-        $newPath = if ([string]::IsNullOrEmpty($userPath)) { $InstallDir } else { "$userPath;$InstallDir" }
-        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-        $env:Path = "$env:Path;$InstallDir"
-        Say ""
-        Say "已把 $InstallDir 加进用户 PATH——**新开**一个终端它才会生效。"
+    # **Through the registry, keeping the value's type.** `[Environment]::GetEnvironmentVariable`
+    # reads the user PATH *expanded* and `SetEnvironmentVariable` writes it back as REG_SZ, so
+    # `%JAVA_HOME%\bin` turns into whatever it expanded to during the install — or stays literal
+    # while Windows never expands it again. Either way that entry stops following its variable and
+    # another tool quietly drops off PATH. Read unexpanded, write back as the same kind.
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    try {
+        $kind = [Microsoft.Win32.RegistryValueKind]::String
+        try { $kind = $key.GetValueKind('Path') } catch { }
+        $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        if (($raw -split ';') -notcontains $InstallDir) {
+            $newPath = if ([string]::IsNullOrEmpty($raw)) { $InstallDir } else { "$raw;$InstallDir" }
+            $key.SetValue('Path', $newPath, $kind)
+
+            # The API we are not using broadcasts this itself; writing the registry does not, and
+            # without it a terminal opened from an already-running Explorer keeps the old PATH.
+            if (-not ('Win32.EnvBroadcast' -as [type])) {
+                Add-Type -Namespace Win32 -Name EnvBroadcast -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+            }
+            try {
+                $sent = [UIntPtr]::Zero
+                [Win32.EnvBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 1000, [ref]$sent) | Out-Null
+            } catch { }
+
+            $env:Path = "$env:Path;$InstallDir"
+            Say ""
+            Say "已把 $InstallDir 加进用户 PATH——**新开**一个终端它才会生效。"
+        }
+    } finally {
+        $key.Close()
     }
 
     Say ""
