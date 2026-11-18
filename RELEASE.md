@@ -63,7 +63,7 @@ git tag cli/v1.0.0 && git push origin cli/v1.0.0
 - **文件名不带版本号**。这样下载地址永久稳定，安装说明不用跟着每次发版改。版本号由二进制自己说。
 - **unix 用 `.tar.gz`，Windows 用 `.zip`**——跟 Go 自己和绝大多数项目的做法一致，Windows 上双击就能解。
 - 每次发布另有：`checksums.txt`（六个平台包、技能包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
-- **同一批文件另存一份在 GitHub Release 与 Gitee**（正式与 beta 都建；排练不建）。存在的理由只有一个：给**没有任何校验工具**的读者一条可执行的核对路径——从下载站与另一个来源各取一份 `checksums.txt` 比较字节。证明的不是签名者是谁，而是两个独立来源没有各说各话。GitHub 在大陆不稳定，Gitee 是那条能打开的；它同时托管源码镜像（`main`），清单放在不合并的 `releases` 分支的 `v<版本>/` 下。（标签即发布，正式与 beta 都建；排练不建）。它存在的理由只有一个：给**没有任何校验工具**的读者一条可执行的核对路径——从下载站与发布页各取一份 `checksums.txt` 比较字节。证明的不是签名者是谁，而是两个独立来源没有各说各话。
+- **同一批文件另存一份在 GitHub Release 与 Gitee**（标签即发布，正式与 beta 都建；排练不建）。存在的理由只有一个：给**没有任何校验工具**的读者一条可执行的核对路径——从下载站与另一个来源各取一份 `checksums.txt` 比较字节。证明的不是签名者是谁，而是两个独立来源没有各说各话。GitHub 在大陆不稳定，Gitee 是那条能打开的；它同时托管源码镜像（`main`），清单放在不合并的 `releases` 分支的 `v<版本>/` 下。Gitee 那一步走 HTTPS + `GITEE_TOKEN`：这个仓库的部署公钥被 Gitee 以「DeployKey does not support push code」拒绝，原因在钥匙类型而非权限开关。
 
 ## 5 · 构建参数
 

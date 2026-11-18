@@ -777,21 +777,31 @@ jobs:
       - name: Mirror the source and the manifest to Gitee
         if: needs.build.outputs.channel != 'test'
         env:
-          GITEE_DEPLOY_KEY: ${{ secrets.GITEE_DEPLOY_KEY }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_USER: lijinzhao86
           CHANNEL: ${{ needs.build.outputs.channel }}
         run: |
           set -euo pipefail
-          if [ -z "${GITEE_DEPLOY_KEY:-}" ]; then
-            echo "::error::GITEE_DEPLOY_KEY is empty — the release is live but the Gitee mirror will not be, and the install page promises it; add the secret and re-run this tag"
+          if [ -z "${GITEE_TOKEN:-}" ]; then
+            echo "::error::GITEE_TOKEN is empty — the release is live but the Gitee mirror will not be, and the install page promises it; add the secret and re-run this tag"
             exit 1
           fi
-          dir="$RUNNER_TEMP/gitee"
-          install -d -m 700 "$dir"
-          printf '%s\n' "$GITEE_DEPLOY_KEY" > "$dir/key"
-          chmod 600 "$dir/key"
-          ssh-keyscan gitee.com > "$dir/known_hosts" 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts"
-          remote="git@gitee.com:skillmasterai/skillmaster-cli.git"
+          # **HTTPS with a token, not a deploy key.** Gitee refuses this repository's deploy key
+          # with 「DeployKey does not support push code」 — reproduced outside CI with a
+          # `git push --dry-run` against a clone, so it is the key type and not a setting we
+          # missed. The token reaches git through `GIT_ASKPASS` and never sits in a remote URL:
+          # a failed push prints that URL, and a printed URL is a leaked credential in the log.
+          askpass="$RUNNER_TEMP/gitee-askpass.sh"
+          cat > "$askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            Username*) echo "${GITEE_USER}" ;;
+            *) echo "${GITEE_TOKEN}" ;;
+          esac
+          ASKPASS
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0
+          remote="https://gitee.com/skillmasterai/skillmaster-cli.git"
           identity=(-c user.name="SkillMaster Bot" -c user.email="bot@skillmasterai.com")
 
           # The source. Only the live channel touches `main`; a beta build is the same tree.
