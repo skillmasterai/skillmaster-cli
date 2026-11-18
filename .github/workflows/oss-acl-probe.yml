@@ -1,0 +1,115 @@
+# A throwaway probe for the download bucket's object ACL. It uploads three tiny files under
+# `_probe/<run id>/` — one per way of asking rclone for a public object — then reads each one back
+# anonymously and prints the HTTP status. Nothing under `releases/`, no live key, no tag.
+#
+# Why it exists: `cli/v1.6.0` and `cli/v1.6.1` both failed at "the staging area holds all thirteen
+# objects" with HTTP 403 on every freshly uploaded key, while keys from 1.5.x still answer 200 and
+# keys that do not exist answer 404. That is an object ACL left at OSS's default of private, not a
+# network problem — and burning a release version per guess is the wrong way to find which flag
+# rclone actually turns into the ACL header.
+name: OSS ACL probe
+
+on:
+  # `workflow_dispatch` needs the file on the default branch, and the whole point is to not go
+  # through main for a probe. A push that touches this file runs it.
+  push:
+    paths:
+      - '.github/workflows/oss-acl-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OSS_BUCKET: skillmaster-dl
+
+jobs:
+  probe:
+    name: Upload three objects, read them back anonymously
+    runs-on: ubuntu-latest
+    # Repo secrets, not the `release` environment, and the probe writes only under `_probe/`.
+    # A probe that needed a reviewer would be one more click per guess.
+    steps:
+      - name: Install rclone
+        run: |
+          set -euo pipefail
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq rclone
+          rclone version | head -3
+          echo "--- does this build know --s3-acl? ---"
+          rclone help flags | grep -i 's3-acl' || echo "no --s3-acl flag in this build"
+
+      - name: Point rclone at the download bucket
+        env:
+          ACCESS_KEY_ID: ${{ secrets.OSS_DL_ACCESS_KEY_ID }}
+          ACCESS_KEY_SECRET: ${{ secrets.OSS_DL_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.config/rclone"
+          cat > "$HOME/.config/rclone/rclone.conf" <<EOF
+          [dl]
+          type = s3
+          provider = Alibaba
+          access_key_id = ${ACCESS_KEY_ID}
+          secret_access_key = ${ACCESS_KEY_SECRET}
+          endpoint = https://oss-cn-hangzhou.aliyuncs.com
+          EOF
+          rclone listremotes
+
+      - name: Upload three ways and read each one back
+        run: |
+          set -euo pipefail
+          prefix="_probe/${GITHUB_RUN_ID}"
+          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
+          printf 'probe %s\n' "${GITHUB_RUN_ID}" > /tmp/plain.txt
+
+          # `curl -w '%{http_code}'` rather than `-f`: 403 is the answer we are looking for, and
+          # it is not an error in this script.
+          code() { curl -sS -o /dev/null -w '%{http_code}' "$base/${prefix}/$1" || echo 000; }
+
+          upload() {
+            name="$1"; shift
+            set +e
+            out="$(rclone copyto --s3-no-check-bucket --retries 1 "$@" /tmp/plain.txt "dl:${OSS_BUCKET}/${prefix}/${name}" 2>&1)"
+            rc=$?
+            set -e
+            printf '\n== %s (upload exit %s, anonymous GET %s)\n' "$name" "$rc" "$(code "$name")"
+            [ -n "$out" ] && printf '%s\n' "$out"
+            return 0
+          }
+
+          echo "== no ACL flag (what 1.6.0 did before the fix) =="
+          upload plain.txt
+
+          echo "== --header-upload x-oss-object-acl: public-read (what 1.6.1 did) =="
+          upload hdr-oss.txt --header-upload "x-oss-object-acl: public-read"
+
+          echo "== --header-upload x-amz-acl: public-read (the S3 spelling) =="
+          upload hdr-amz.txt --header-upload "x-amz-acl: public-read"
+
+          echo "== --s3-acl public-read (what 1.6.2 carries) =="
+          upload s3acl.txt --s3-acl public-read
+
+          # **Only header lines that mention an ACL, and only the request direction.** `--dump
+          # headers` also prints `Authorization:`, and this repository is public — the log must not
+          # carry a signed request. `>` is what rclone puts in front of a request header.
+          echo
+          echo "== what rclone actually sent for --s3-acl public-read =="
+          rclone copyto -vv --dump headers --s3-no-check-bucket --s3-acl public-read \
+            /tmp/plain.txt "dl:${OSS_BUCKET}/${prefix}/dumped.txt" 2>&1 \
+            | grep -E '^> .*acl' || echo "no ACL header was sent"
+
+          echo
+          echo "== is the bucket open to anonymous listing at all? =="
+          echo "GET /?list-type=2 -> $(curl -sS -o /dev/null -w '%{http_code}' "$base/?list-type=2")"
+
+          echo
+          echo "== a known-good old object, for comparison =="
+          echo "GET /releases/1.5.1/checksums.txt -> $(curl -sS -o /dev/null -w '%{http_code}' "$base/releases/1.5.1/checksums.txt")"
+
+          # Fail the probe only if nothing worked; the point is the table above, which a human reads.
+          if [ "$(code s3acl.txt)" != 200 ] && [ "$(code hdr-amz.txt)" != 200 ] && [ "$(code hdr-oss.txt)" != 200 ]; then
+            echo "::error::every variant stayed private — the bucket itself is refusing public objects, not rclone"
+            exit 1
+          fi
