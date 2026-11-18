@@ -402,7 +402,7 @@ jobs:
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
-            rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
+            rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
               "$f" "$staging/$(basename "$f")"
           done
           rclone lsf --s3-no-check-bucket "$staging" | sort
@@ -457,9 +457,9 @@ jobs:
             # makes every published URL answer 403 (2026-11-18, cli/v1.6.0).
             while IFS= read -r f; do
               name="$(basename "$f")"
-              rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
+              rclone copyto --s3-no-check-bucket --retries 3 --ignore-times --s3-acl public-read \
                 --header-upload "Cache-Control: no-cache" \
-                --header-upload "x-oss-object-acl: public-read" \
+                \
                 "$f" "dl:${OSS_BUCKET}/$name"
             done < <(objects)
           }
@@ -503,8 +503,8 @@ jobs:
           if [ "${#lost[@]}" -gt 0 ]; then
             echo "${#lost[@]} object(s) lost Cache-Control in the copy; re-uploading them from the checkout"
             for f in "${lost[@]}"; do
-              rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
-                --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
+              rclone copyto --s3-no-check-bucket --retries 3 --ignore-times --s3-acl public-read \
+                --header-upload "Cache-Control: no-cache" \
                 "$f" "dl:${OSS_BUCKET}/$(basename "$f")"
             done
             for f in "${lost[@]}"; do
@@ -519,7 +519,7 @@ jobs:
           echo "Cache-Control: no-cache is on all thirteen live objects"
 
           printf '%s\n' "$VERSION" > /tmp/version.txt
-          rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
+          rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
             /tmp/version.txt "dl:${OSS_BUCKET}/version.txt"
 
           # **Ask the marker, do not assume the write worked.** Everything above is already live;

@@ -90,7 +90,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 | 项 | 值 |
 |---|---|
 | 地址 | `https://dl.skillmasterai.com/`（安装脚本与自更新都指向它） |
-| 存储 | 阿里云 OSS bucket `skillmaster-dl`（华东1，**公共读、不开放写**）。**每个对象上传时显式带 `x-oss-object-acl: public-read`**：走 S3 兼容接口时新对象默认私有，不写这条会让所有下载地址回 403（2026-11-18，`cli/v1.6.0` 首次发布时踩到） |
+| 存储 | 阿里云 OSS bucket `skillmaster-dl`（华东1，**公共读、不开放写**）。**每个对象上传时带 `--s3-acl public-read`**（rclone 会转成 ACL 头）：走 S3 兼容接口时新对象默认私有，不写这条会让所有下载地址回 403（2026-11-18，`cli/v1.6.0` 与 `v1.6.1` 两次踩到；`--header-upload x-oss-object-acl` 被 rclone 丢掉，别再用） |
 | 接入 | `dl.skillmasterai.com` 是 ECS 上 nginx 反代到同一个桶；用户与 agent 都走它。桶的直连地址继续可用，作备用通道（[部署说明](../deploy/README.md)） |
 | 证书 | ECS 上的 certbot，**DNS-01**：`dl.` 的 TXT 记录由 `/etc/skillmaster/acme/auth.sh` 写入 Aliyun DNS，续期由 `certbot.timer` 自动完成 |
 | `Cache-Control` | **`no-cache`**——键名不带版本号，一缓存就会有人下到上一版；宁可每次回源 |
