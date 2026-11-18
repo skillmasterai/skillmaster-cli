@@ -204,7 +204,9 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
         Say ""
         Say "没能写入用户 PATH；请手动把 $InstallDir 加进 PATH。"
     } finally {
-        if ($key) { $key.Close() }
+        # Close on an open handle does not throw in practice; this keeps a theoretical one from
+        # turning a finished install into a non-zero exit.
+        if ($key) { try { $key.Close() } catch { } }
     }
 
     Say ""
