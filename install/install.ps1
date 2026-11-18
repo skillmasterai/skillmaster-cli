@@ -1,4 +1,10 @@
-# Installs the SkillMaster CLI on Windows.
+﻿# Installs the SkillMaster CLI on Windows.
+#
+# **This file starts with a UTF-8 BOM, and it has to.** Windows PowerShell 5.1 decodes a BOM-less
+# script with the system ANSI codepage — GBK on a Chinese Windows — so the messages below arrive
+# as mojibake and a stray byte can break the parse. PowerShell 7 and the CI parser assume UTF-8
+# and will not notice if the BOM is removed; `shell.yml` checks the first three bytes for that
+# reason. Do not strip it, and do not "fix" the file by saving it as ANSI.
 #
 # The artifact names, the checksum file and this script's behaviour are specified in
 # skillmaster-cli/RELEASE.md §7; that document is the authority, this file is the implementation.
