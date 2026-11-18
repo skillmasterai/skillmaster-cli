@@ -8,15 +8,24 @@
 # **`-rc` tags build and do not upload.** That is how the pipeline is exercised without putting a
 # prerelease on the download site, which only ever carries formal versions.
 #
-# **A rehearsal tag (`cli/vX.Y.Z-test`) runs this same file against `_test/`.** Same build, same
-# signatures, same staging, promotion, `version.txt` and byte-for-byte read-back; every path is
-# prefixed with `/_test` and the live keys the site serves are not touched. `workflow_dispatch` is
-# the same rehearsal without a tag.
+# **One pipeline, three channels, and the tag decides which.** The steps are identical; a channel
+# is three values — the bucket prefix, the update address compiled into the binary, and whether the
+# marker carries a revision:
 #
-# The rehearsal exists because two formal releases were spent finding out that the bucket leaves
-# new objects private (2026-11-18, `cli/v1.6.0` and `v1.6.1`). A second, hand-written workflow
-# would have drifted from this one before it ever ran, and a copy proves nothing about the file it
-# copied — so the rehearsal is this file with a prefix, not a copy of it.
+# | tag                  | channel | prefix   | binary updates from      |
+# |----------------------|---------|----------|--------------------------|
+# | `cli/v1.6.3`         | live    | ``       | dl.skillmasterai.com     |
+# | `cli/v1.6.3-beta.1`  | beta    | `/beta`  | dl.skillmasterai.com/beta|
+# | `cli/v1.6.3-test`    | test    | `/_test` | dl.skillmasterai.com     |
+# | `cli/v1.6.3-rc.1`    | none    | —        | built, not published     |
+#
+# `workflow_dispatch` is the rehearsal without a tag.
+#
+# **Why one file.** The beta channel used to be `cli-beta.yml`, a 446-line copy of this one. Two
+# copies of the upload path means every fix has to be made twice: on 2026-11-18 the ACL fix landed
+# in both, and had it landed in one, the other channel would have gone on publishing objects that
+# answer 403 while its own run stayed green. A rehearsal is this file with a prefix, and so is
+# beta.
 name: CLI release
 
 on:
@@ -58,8 +67,11 @@ jobs:
       attestations: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-      # `live` is a formal tag, `test` is a rehearsal, `none` is a prerelease build.
+      # `live`, `beta`, `test`, or `none` for a prerelease build that is not published.
       channel: ${{ steps.version.outputs.channel }}
+      # Only beta builds carry it: the beta version string is fixed across builds, so the commit is
+      # what tells two of them apart.
+      revision: ${{ steps.version.outputs.revision }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -109,6 +121,18 @@ jobs:
             echo "$version is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # A beta tag is a published build for testers. The version names the line; the commit
+          # names the build, and both go into `--version` and the channel marker.
+          if printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-beta(\.[0-9]+)?$'; then
+            revision="${GITHUB_SHA:0:7}"
+            {
+              echo "version=$version"
+              echo "channel=beta"
+              echo "revision=$revision"
+            } >> "$GITHUB_OUTPUT"
+            echo "$version ($revision) goes to the beta channel." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
             echo "::error::$version is not a version — RELEASE.md §2 allows cli/v1.2.3, cli/v1.2.3-rc.1 and cli/v1.2.3-test"
             exit 1
@@ -129,6 +153,13 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      # **Beta builds run the tests here.** Since beta builds are cut by a tag, main has already run
+      # them — but a tag can point at a commit from last week, and a beta is installed by people and
+      # left running for days. A rehearsal does not need them: it publishes where nothing reads.
+      - name: The tests pass on this commit
+        if: steps.version.outputs.channel == 'beta'
+        run: go test ./...
+
       # §3, §4: six packages, names without a version. The version lives in the binary and is
       # printed by `--version`; a name that carried it would break every download URL on release.
       # **The server address is compiled in, and it is the one the server publishes.** `config`
@@ -141,6 +172,8 @@ jobs:
         working-directory: .
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          REVISION: ${{ steps.version.outputs.revision }}
           SERVER: ${{ vars.SKILLMASTER_PUBLIC_BASE_URL }}
         run: |
           set -euo pipefail
@@ -149,12 +182,21 @@ jobs:
             exit 1
           fi
           echo "the binary will dial $SERVER"
+          # **The update channel is compiled in** (ADR 0103): a beta tester's binary cannot be moved
+          # onto the formal track by a file on the server, and a formal binary cannot be left on the
+          # beta one. A rehearsal compiles the formal address, because that is what the release it
+          # rehearses will carry.
+          update_base="$UPDATE_BASE"
+          [ "$CHANNEL" = beta ] && update_base="$UPDATE_BASE/beta"
+          echo "the binary will update from $update_base"
           # One string, appended line by line: `go build -ldflags` splits on whitespace, and a
           # value carrying a newline or leading indentation is a thing to find out about in CI.
           ldflags="-s -w"
           ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.Version=${VERSION}"
           ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/config.DefaultServer=${SERVER}"
-          ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.UpdateBase=${UPDATE_BASE}"
+          ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.UpdateBase=${update_base}"
+          # Empty for every channel but beta; `--version` prints `(revision)` only when it is set.
+          [ -n "$REVISION" ] && ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.Revision=${REVISION}"
           # Absolute paths, because two of the three commands below change directory: a
           # relative archive name means one thing here and another inside `( cd … )`. The
           # first rehearsal shipped the tar files to the repository root and the zips to
@@ -277,6 +319,9 @@ jobs:
       # built it.
       - name: The binary carries the server address
         env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          REVISION: ${{ steps.version.outputs.revision }}
           SERVER: ${{ vars.SKILLMASTER_PUBLIC_BASE_URL }}
         run: |
           set -euo pipefail
@@ -287,11 +332,23 @@ jobs:
           fi
           # **The update channel, for the same reason.** A binary without it never updates and
           # never says why: "no new version" and "this build cannot update" look identical.
-          if ! grep -qaF "$UPDATE_BASE" "$RUNNER_TEMP/skmr"; then
-            echo "::error::skillmaster_linux_amd64 does not carry $UPDATE_BASE — it would never update itself"
+          update_base="$UPDATE_BASE"
+          [ "$CHANNEL" = beta ] && update_base="$UPDATE_BASE/beta"
+          if ! grep -qaF "$update_base" "$RUNNER_TEMP/skmr"; then
+            echo "::error::skillmaster_linux_amd64 does not carry $update_base — it would never update itself"
             exit 1
           fi
-          echo "linux/amd64 carries $SERVER and $UPDATE_BASE"
+          # **A beta is identified by its commit.** The version string is the same across the line,
+          # so a build whose revision did not take prints a version that names no build at all.
+          if [ "$CHANNEL" = beta ]; then
+            printed="$("$RUNNER_TEMP/skmr" --version)"
+            echo "$printed"
+            case "$printed" in
+              "skmr ${VERSION} (${REVISION}) (API "*) ;;
+              *) echo "::error::--version printed '$printed', expected it to name both $VERSION and $REVISION"; exit 1 ;;
+            esac
+          fi
+          echo "linux/amd64 carries $SERVER and $update_base"
 
       - name: Keep the packages
         uses: actions/upload-artifact@v4
@@ -326,10 +383,12 @@ jobs:
       cancel-in-progress: false
     env:
       VERSION: ${{ needs.build.outputs.version }}
-      # **`''` for a live release, `/_test` for a rehearsal.** The rehearsal writes the same layout
-      # one level down — `_test/releases/<version>/` staged, `_test/<name>` live, `_test/version.txt`
-      # — so every step below runs unchanged and nothing the site serves can move.
-      ROOT: ${{ needs.build.outputs.channel == 'test' && '/_test' || '' }}
+      # **The channel is one prefix.** `''` is the live site, `/_test` a rehearsal, `/beta` the
+      # beta channel — and every path below is written once, as `${ROOT}/...`. The rehearsal and the
+      # beta channel get the live layout one level down, so the same steps run unchanged and
+      # nothing the site serves can move.
+      ROOT: ${{ needs.build.outputs.channel == 'beta' && '/beta' || (needs.build.outputs.channel == 'test' && '/_test' || '') }}
+      REVISION: ${{ needs.build.outputs.revision }}
       # rclone's S3 backend speaks OSS's S3-compatible endpoint, under a remote named `dl`.
       #
       # **`dl:path`, never `:dl:path`.** The leading colon is rclone's connection-string form, and
@@ -561,7 +620,10 @@ jobs:
           fi
           echo "Cache-Control: no-cache is on all thirteen live objects"
 
-          printf '%s\n' "$VERSION" > /tmp/version.txt
+          # The beta version string is the same across the line, so the marker carries the build.
+          marker_text="$VERSION"
+          [ "$ROOT" = /beta ] && marker_text="$VERSION ($REVISION)"
+          printf '%s\n' "$marker_text" > /tmp/version.txt
           rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
             /tmp/version.txt "dl:${OSS_BUCKET}${ROOT}/version.txt"
 
@@ -574,8 +636,8 @@ jobs:
           marker_status="$(curl -sS -o /tmp/marker -w '%{http_code}' --retry 5 --retry-delay 3 \
             "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/version.txt")" || marker_status=000
           marker="$(cat /tmp/marker 2>/dev/null || true)"
-          if [ "$marker_status" != "200" ] || [ "$marker" != "$VERSION" ]; then
-            echo "::error::the thirteen objects are live but version.txt answers HTTP $marker_status and says '$marker' instead of '$VERSION'; re-run this tag to finish"
+          if [ "$marker_status" != "200" ] || [ "$marker" != "$marker_text" ]; then
+            echo "::error::the thirteen objects are live but ${ROOT:+$ROOT/}version.txt answers HTTP $marker_status and says '$marker' instead of '$marker_text'; re-run this tag to finish"
             exit 1
           fi
 

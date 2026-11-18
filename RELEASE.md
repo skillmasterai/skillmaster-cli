@@ -152,22 +152,31 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 
 **信任边界**：脚本与包在同一个域名下，能改包的人也能改脚本——一行式 `curl | sh` / `irm | iex` 不会带来它本来就没有的安全，它们只是最短路径。安装页给出的验证流程是：先核对 `checksums.txt` 的签名或构建来源证明，再核对脚本的 SHA-256，最后把已核对的清单传给安装器（`SKILLMASTER_CHECKSUMS`）。
 
-## 8 · beta 通道（[ADR 0099](../docs/decisions/0099-the-cli-has-a-beta-channel.md)）
+## 8 · beta 通道（[ADR 0099](../docs/decisions/0099-the-cli-has-a-beta-channel.md)，2026-11-18 起并入同一条流水线）
 
-**和正式发布是两条流水线。** `.github/workflows/cli-beta.yml` 手动触发（`workflow_dispatch`），**不认任何 tag**；`cli/v*` 那条（§2）与站点根键完全不受影响。
+**beta 是同一个工作流的另一个渠道，由标签决定**，不再有一条独立的工作流：
+
+```
+git tag cli/v1.6.3-beta.1 && git push origin cli/v1.6.3-beta.1
+```
+
+它跑的就是 `.github/workflows/cli-release.yml`：同样的构建、同样的签名、同样的暂存与回读，只是前缀换成 `beta/`、二进制里编译进 `beta/` 的更新地址、标记里带上提交号。正式线的根键一个都不动。
+
+**为什么不再单独一条。** 之前 `cli-beta.yml` 是本文件的 446 行副本。两条上传路径意味着每个修复都要改两遍：2026-11-18 那次 ACL 修复，两条都改了；只改一条的话，另一条会继续把私有对象当成发布成功。
 
 | 项 | 值 |
 |---|---|
-| 版本串 | **测试期内固定**：`1.5.0-beta`（v79 起）。同一提交的正式构建叫 `1.5.0`；beta 通道在 `1.5.0` 发布后仍叫 `1.5.0-beta`，到 `1.6.0` 开线再改 |
-| 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.5.0-beta (a1b2c3d) (API v1)` |
-| 落在哪 | 桶的 `beta/` 下的十三个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
+| 版本串 | 取自标签：`1.6.3-beta.1`。同一提交的正式构建叫 `1.6.3`；beta 标签不占正式号 |
+| 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.6.3-beta.1 (a1b2c3d) (API v1)` |
+| 落在哪 | 桶的 `beta/` 下的十三个对象 + `beta/version.txt`（内容 `1.6.3-beta.1 (a1b2c3d)`）+ `beta/releases/1.6.3-beta.1/` 暂存区 |
 | 怎么装 | `curl -fsSL https://dl.skillmasterai.com/beta/install.sh \| SKILLMASTER_DL_URL=https://dl.skillmasterai.com/beta sh` |
 | 怎么更新 | 自动更新（v25）按编进去的 `beta/` 通道检查；也可以重跑那条安装命令，看 `--version` 的提交号变没变 |
+| 证明身份 | `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli --signer-workflow skillmasterai/skillmaster-cli/.github/workflows/cli-release.yml` |
 | 承诺 | 只有一条：装上的构建说得出来自哪次提交。命令面、状态、数据都不保证 |
 
-**beta 不占版本号，所以版本串与字节不是一一对应的**：同一个 `1.5.0-beta` 会有很多个构建，`beta/version.txt` 记的永远是最近一次。凡是按版本号判断的地方（例如 §2 的「站点只会往前走」）都不适用于 beta。
+**每个 beta 标签是一次构建**，版本串本身就区分它们，标记里的提交号再确认一次。正式线那条「站点只会往前走」（§2）不适用于 beta：beta 随时可以被更新的标签覆盖。
 
-**不要用 beta 的地址做任何「稳定」的事**：它是内测出口，可以随时换掉或关掉。关掉时删 `beta/` 前缀与本流水线文件即可，正式站点一个键都不用动。
+**不要用 beta 的地址做任何「稳定」的事**：它是内测出口，可以随时换掉或关掉。关掉时删 `beta/` 前缀即可——正式站点一个键都不用动，工作流也不用动。
 
 ## 9 · 换代与退役
 
