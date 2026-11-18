@@ -280,7 +280,7 @@ func updateCmd(ctx context.Context, args []string) error {
 		// **Replacing the running binary is a rename, and a sandbox can refuse it.** The command is
 		// one of the management commands allowed to run outside the sandbox (ADR 0186); say that,
 		// rather than leaving the person with a bare "operation not permitted".
-		return fmt.Errorf("安装新版本：%w（如果是在 agent 沙箱里，让 agent 把 skmr update 放到沙箱外跑一次；重跑安装说明里那条命令也能装）", err)
+		return fmt.Errorf("安装新版本：%w（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行；重跑安装脚本也能装）", err)
 	}
 	if result.Scheduled {
 		fmt.Printf("已下载 %s，这条命令结束后自动替换，下一条命令起生效。\n", remote.Raw)

@@ -48,7 +48,7 @@ command -v curl >/dev/null 2>&1 || die "需要 curl（没有它下不了包）"
 # asks macOS for the per-user temp directory (`/var/folders/...`), which the sandbox refuses; a
 # template under `$TMPDIR` (the writable one the sandbox provides) is what works.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/skillmaster-install.XXXXXX")" ||
-  die "建不了临时目录：${TMPDIR:-/tmp}（沙箱里被拦时，把这条安装命令放到沙箱外跑一次）"
+  die "建不了临时目录：${TMPDIR:-/tmp}（如果沙箱拒绝了这次写入，请在你自己的终端里重新运行这条命令）"
 # Best effort: a sandbox may refuse deletion. Cleanup is not worth failing an install that has
 # already placed the binary, and the temp directory is the installer's own.
 trap 'rm -rf "$tmp" 2>/dev/null || true' EXIT
@@ -61,12 +61,21 @@ say "下载 $BASE_URL/$artifact"
 # oldest ones. A 404 is not retried either way; `--retry` already covers the transient cases.
 curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/$artifact" "$BASE_URL/$artifact" ||
   die "下载失败：$BASE_URL/${artifact}（网络，或这个平台暂时没有产物）"
-curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/checksums.txt" "$BASE_URL/checksums.txt" ||
-  die "下载失败：$BASE_URL/checksums.txt"
+# **A caller that already verified the manifest passes it in.** The page verifies a signed
+# `checksums.txt` and then runs this script; without this, the script would download a fresh
+# copy from the same origin and the signed one would protect nothing.
+sums="${SKILLMASTER_CHECKSUMS:-}"
+if [ -n "$sums" ]; then
+  [ -f "$sums" ] || die "SKILLMASTER_CHECKSUMS 指向的文件不存在：$sums"
+else
+  sums="$tmp/checksums.txt"
+  curl -fsSL --retry 3 --retry-delay 2 -o "$sums" "$BASE_URL/checksums.txt" ||
+    die "下载失败：$BASE_URL/checksums.txt"
+fi
 
 # --- 3. Check the checksum ---------------------------------------------------
 
-want="$(awk -v name="$artifact" '$2 == name { print $1 }' "$tmp/checksums.txt")"
+want="$(awk -v name="$artifact" '$2 == name { print $1 }' "$sums")"
 [ -n "$want" ] || die "checksums.txt 里没有 $artifact 这一行"
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -97,14 +106,14 @@ INSTALL_DIR="$resolved"
 # refused (Linux `ETXTBSY`); outside a sandbox it is the more atomic of the two.
 if ! cp "$tmp/skmr" "$INSTALL_DIR/skmr" 2>/dev/null; then
   cp "$tmp/skmr" "$INSTALL_DIR/skmr.new" ||
-    die "复制失败：$INSTALL_DIR（如果是在 agent 沙箱里，请让 agent 把这条安装命令放到沙箱外跑，或在你自己的终端安装）"
+    die "复制失败：$INSTALL_DIR（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）"
   chmod 755 "$INSTALL_DIR/skmr.new" ||
-    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果是在 agent 沙箱里，请把这条安装命令放到沙箱外跑"
+    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
   mv -f "$INSTALL_DIR/skmr.new" "$INSTALL_DIR/skmr" ||
-    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果是在 agent 沙箱里，请让 agent 把这条安装命令放到沙箱外跑，或在你自己的终端安装"
+    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
 else
   chmod 755 "$INSTALL_DIR/skmr" ||
-    die "改不了 $INSTALL_DIR/skmr 的权限：如果是在 agent 沙箱里，请把这条安装命令放到沙箱外跑"
+    die "改不了 $INSTALL_DIR/skmr 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
 fi
 
 # --- 5. Say what to do next ---------------------------------------------------
@@ -128,11 +137,10 @@ say ""
 # --- 8. Offer to configure the agent sandboxes ------------------------------
 #
 # **The installer prints; it never reads a terminal.** A consent prompt on `/dev/tty` cannot be
-# answered by an agent, and a prompt nobody sees is worse than a sentence. The agent that runs this
-# asks the user through its own question UI (`AskUserQuestion`) and then runs `doctor --fix`; a
-# person running the command is giving consent by running it. The keys, paths and backups stay in
-# `skmr doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can never be taken
-# as "yes".
+# answered here, and a prompt nobody sees is worse than a sentence. Whether to run `doctor --fix`
+# is the user's decision; a person running it gives consent by running it. The keys, paths and
+# backups stay in `skmr doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can
+# never be taken as "yes".
 #
 # **Only print this when there is something to configure.** A terminal-only user with none of these
 # tools installed should not be handed a security question about them.
@@ -156,25 +164,16 @@ has_clients() {
 
 print_sandbox_step() {
   say ""
-  say "还有一步：让 SkillMaster 在这些 AI 工具里正常干活，不用每次用都弹窗问你。"
+  say "可选：让 SkillMaster 在这些 AI 工具里正常干活，不用每次用都弹窗问你。"
+  say "这一步不会自动执行；是否执行由你决定，并且请在你自己的终端里运行。"
   say ""
-  say "它需要两样东西："
-  say "  · 一个只属于你的文件夹，用来存登录凭证"
-  say "  · 能连上 SkillMaster 的服务器"
-  say ""
-  say "这一步会改这些工具的安全设置：把文件夹和 SkillMaster 的域名写进它们的白名单。"
-  say "有两个例外要说清楚：如果已经有可用的 Codex 配置（旧式），它会被设成工作区可写——"
-  say "不只是 SkillMaster 的文件夹（没有配置或配置为空时不动它）；"
-  say "会写入的 Codex（旧式）与启用了整进程沙箱的 Gemini，网络侧只有总开关，会被打开，等于放开全部出站网络。"
-  say ""
-  say "想先看会改什么："
+  say "先看会改什么："
   say "  \"$INSTALL_DIR/skmr\" doctor --fix --dry-run"
-  say "同意就运行："
+  say "确认后再运行："
   say "  \"$INSTALL_DIR/skmr\" doctor --fix"
-  say "如果是 agent 在跑安装：先问用户「是否现在配置」一次，得到同意后再运行上面这条。"
   say "以后想撤回条目："
   say "  \"$INSTALL_DIR/skmr\" doctor --fix --undo"
-  say "（为放行打开的开关不会还原，输出也会说明。）"
+  say "（为放行打开的开关不会还原，输出也会说明；Codex 与 Gemini 的例外也以 --dry-run 的输出为准。）"
 }
 
 if has_clients; then
@@ -192,7 +191,7 @@ say "不想自动更新：在 shell 配置里设 SKILLMASTER_AUTO_UPDATE=0。"
 say ""
 say "下一步："
 say "  \"$INSTALL_DIR/skmr\" auth status"
-say "已登录后，新开一个会话，把安装说明里的提示词发给 Agent；如果是在 Agent 对话里装的，不要在安装会话里运行 startup。"
-say "人自己在终端装的话，可以运行下面这条读引导正文："
-say "  \"$INSTALL_DIR/skmr\" startup"
-say "云端 / 远程 Agent（每开一个会话就是新环境）按安装说明第 30 行处理。"
+say "已登录后，新开一个会话，让 Agent 带你走一遍："
+say "  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster 的新人引导"
+say "  其他 Agent：\"$INSTALL_DIR/skmr\" startup"
+say "云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。"
