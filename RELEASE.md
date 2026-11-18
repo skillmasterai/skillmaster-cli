@@ -136,7 +136,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 两个脚本共用第 1–4 段（判断平台 → 取包与 `checksums.txt` → 核对 SHA-256 → 解包并装成 **`skmr`**）；第 5 段各自收尾（PATH 与 `--version`）；`install.sh` 之后跳到第 8 步（只有它有）。包里可执行文件也叫 `skmr`，见 §4 与 ADR 0113。
 
-- **PATH**：unix 用 `~/.local/bin`，不要求 sudo；Windows 用 `%LOCALAPPDATA%\SkillMaster\bin`，用 `[Environment]::SetEnvironmentVariable('Path', …, 'User')` 写用户 PATH——**不用 `setx`**，它会把长 PATH 截到 1024 字符。
+- **PATH**：unix 用 `~/.local/bin`，不要求 sudo；Windows 用 `%LOCALAPPDATA%\SkillMaster\bin`。Windows 这边**经注册表读改写**（`HKCU\Environment`，按 `DoNotExpandEnvironmentNames` 读、按原 `RegistryValueKind` 写回，再自己广播 `WM_SETTINGCHANGE`）——**不用 `setx`**（把长 PATH 截到 1024 字符），也**不用 `[Environment]::SetEnvironmentVariable`**（读时展开、写回 `REG_SZ`，`%JAVA_HOME%\bin` 这类条目从此不再跟随变量）。写 PATH 失败不让安装失败：文件已经就位，只打一句让人手动加。
 - **收尾**：打印 `skmr --version`（跑不起来就停在这里）。
 
 **替换二进制时优先原地写，`mv` / `Move-Item` / `File.Replace` 只是退路**：安装脚本经常由 agent 在沙箱里执行，而 WorkBuddy 5.8.6 实测（2026-11-11）允许写文件内容、拒绝 rename 覆盖已有文件；首次安装目标不存在时 rename 能过，升级覆盖已有二进制时不能。原地写失败（例如运行中的二进制在 Linux 上返回 `ETXTBSY`）才退回 staged + 改名，并在失败信息里把这条安装命令交给用户，请他在自己的终端里跑。`skmr update` 替换的是**正在运行**的二进制，仍用 rename；它在沙箱里失败时同样把命令交给用户。
