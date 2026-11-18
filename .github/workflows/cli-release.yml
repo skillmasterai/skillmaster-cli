@@ -7,12 +7,22 @@
 #
 # **`-rc` tags build and do not upload.** That is how the pipeline is exercised without putting a
 # prerelease on the download site, which only ever carries formal versions.
+#
+# **A dispatch is the same pipeline in dry-run mode, and it is the only other way in.** It builds
+# and signs exactly what a tag would, then stages under `_test/<run id>/` instead of
+# `releases/<version>/` and stops: no live key, no `version.txt`, no promotion, no version guard.
+# Two formal releases were spent finding out that the bucket leaves new objects private
+# (2026-11-18, `cli/v1.6.0` and `v1.6.1`); a second hand-written workflow would have drifted from
+# this one and proved nothing about it, so the dry run is this file rather than a copy of it.
 name: CLI release
 
 on:
   push:
     tags:
       - 'cli/v*'
+  # No inputs on purpose: a dispatch cannot ask to publish, and a dry run cannot be mistaken for
+  # one in the Actions list — the version it prints starts with `0.0.0-test`.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -46,6 +56,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       formal: ${{ steps.version.outputs.formal }}
+      dry_run: ${{ steps.version.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -56,6 +67,7 @@ jobs:
       # §2: a tag that is not in main's history is refused. Otherwise a release can be cut from the
       # middle of a branch, and the thing users download has never been reviewed as a whole.
       - name: The tag is on main
+        if: github.event_name == 'push'
         run: |
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
@@ -66,6 +78,19 @@ jobs:
       - name: Read the version
         id: version
         run: |
+          # A dispatch has no tag to read: it is a rehearsal of this file, so it takes a version
+          # that cannot be mistaken for a release and stops before any live key is touched.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            version="0.0.0-test.${GITHUB_RUN_NUMBER}"
+            {
+              echo "version=$version"
+              echo "formal=false"
+              echo "dry_run=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "$version is a dry run: it stages under \`_test/${GITHUB_RUN_ID}/\` and stops." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "dry_run=false" >> "$GITHUB_OUTPUT"
           version="${GITHUB_REF_NAME#cli/v}"
           if [ -z "$version" ] || [ "$version" = "$GITHUB_REF_NAME" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not carry a version (expected cli/v1.2.3)"
@@ -269,7 +294,9 @@ jobs:
   publish:
     name: Upload the formal version
     needs: build
-    if: needs.build.outputs.formal == 'true'
+    # A dry run publishes nowhere, but it is the upload path that is being tested, so it runs the
+    # same job and turns left at the first live key instead.
+    if: needs.build.outputs.formal == 'true' || needs.build.outputs.dry_run == 'true'
     runs-on: ubuntu-latest
     # **The upload is behind the same gate as the signing key.** Without this line the production
     # write path (bucket credentials, the objects the site serves) ran outside the protected
@@ -353,6 +380,7 @@ jobs:
       # older build and passes its own check, because local and remote agree. `version.txt` is the
       # one object that remembers which release the site is actually serving.
       - name: Refuse to replace a newer published version
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
@@ -398,7 +426,13 @@ jobs:
           # to *create* the bucket — which OSS answers with `409 BucketAlreadyExists` (2026-10-26,
           # seventh release attempt). The uploader knows the bucket exists; the check is a read
           # permission the release key has no reason to hold.
-          staging="dl:${OSS_BUCKET}/releases/${VERSION}"
+          # A dry run stages under `_test/<run id>/`, which no installer reads and no version
+          # guard covers: nothing here can become what the site serves.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            staging="dl:${OSS_BUCKET}/_test/${GITHUB_RUN_ID}"
+          else
+            staging="dl:${OSS_BUCKET}/releases/${VERSION}"
+          fi
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
@@ -410,7 +444,11 @@ jobs:
       - name: The staging area holds all thirteen objects
         run: |
           set -euo pipefail
-          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/releases/${VERSION}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/_test/${GITHUB_RUN_ID}"
+          else
+            base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/releases/${VERSION}"
+          fi
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
             name="$(basename "$f")"
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
@@ -440,6 +478,7 @@ jobs:
       # fetched can always be verified; and the version marker is written only once everything it
       # vouches for is in place.
       - name: Promote the staged objects to the live keys
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           staging="dl:${OSS_BUCKET}/releases/${VERSION}"
@@ -547,6 +586,7 @@ jobs:
       # because the bucket is the origin; the proxied name is asked from the host instead, in the
       # step after this one.
       - name: The bucket serves what was just published
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
@@ -578,6 +618,7 @@ jobs:
       # through the bucket endpoint, which the runner can reach; nginx and its certificate
       # are checked by the server repository's host check.
       - name: The bucket serves the published installer
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/install.sh"
