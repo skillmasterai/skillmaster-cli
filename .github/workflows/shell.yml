@@ -31,6 +31,19 @@ jobs:
       - name: sh -n over the installer
         run: sh -n install/install.sh
 
+      - name: The Windows installer starts with a UTF-8 BOM
+        run: |
+          # **The parser below cannot see this one.** It runs under pwsh 7, which assumes UTF-8
+          # whether or not a BOM is there; Windows PowerShell 5.1 does not — without the BOM it
+          # decodes the script with the system ANSI codepage (GBK on a Chinese Windows), and the
+          # Chinese messages arrive as mojibake. Three bytes are the whole fix, so they get a guard.
+          bom="$(head -c 3 install/install.ps1 | od -An -tx1 | tr -d ' \n')"
+          if [ "$bom" != "efbbbf" ]; then
+            echo "::error::install/install.ps1 must start with a UTF-8 BOM (EF BB BF); found '$bom'. Windows PowerShell 5.1 will read it as ANSI (GBK) without it."
+            exit 1
+          fi
+          echo "install/install.ps1 starts with a UTF-8 BOM"
+
       - name: The Windows installer parses
         shell: pwsh
         run: |
