@@ -8,19 +8,22 @@
 # **`-rc` tags build and do not upload.** That is how the pipeline is exercised without putting a
 # prerelease on the download site, which only ever carries formal versions.
 #
-# **A dispatch is the same pipeline in dry-run mode, and it is the only other way in.** It builds
-# and signs exactly what a tag would, then stages under `_test/<run id>/` instead of
-# `releases/<version>/` and stops: no live key, no `version.txt`, no promotion, no version guard.
-# Two formal releases were spent finding out that the bucket leaves new objects private
-# (2026-11-18, `cli/v1.6.0` and `v1.6.1`); a second hand-written workflow would have drifted from
-# this one and proved nothing about it, so the dry run is this file rather than a copy of it.
+# **A rehearsal tag (`cli/vX.Y.Z-test`) runs this same file against `_test/`.** Same build, same
+# signatures, same staging, promotion, `version.txt` and byte-for-byte read-back; every path is
+# prefixed with `/_test` and the live keys the site serves are not touched. `workflow_dispatch` is
+# the same rehearsal without a tag.
+#
+# The rehearsal exists because two formal releases were spent finding out that the bucket leaves
+# new objects private (2026-11-18, `cli/v1.6.0` and `v1.6.1`). A second, hand-written workflow
+# would have drifted from this one before it ever ran, and a copy proves nothing about the file it
+# copied — so the rehearsal is this file with a prefix, not a copy of it.
 name: CLI release
 
 on:
   push:
     tags:
       - 'cli/v*'
-  # No inputs on purpose: a dispatch cannot ask to publish, and a dry run cannot be mistaken for
+  # No inputs on purpose: a dispatch cannot ask to publish, and a rehearsal cannot be mistaken for
   # one in the Actions list — the version it prints starts with `0.0.0-test`.
   workflow_dispatch:
 
@@ -55,8 +58,8 @@ jobs:
       attestations: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-      formal: ${{ steps.version.outputs.formal }}
-      dry_run: ${{ steps.version.outputs.dry_run }}
+      # `live` is a formal tag, `test` is a rehearsal, `none` is a prerelease build.
+      channel: ${{ steps.version.outputs.channel }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -79,40 +82,46 @@ jobs:
         id: version
         run: |
           # A dispatch has no tag to read: it is a rehearsal of this file, so it takes a version
-          # that cannot be mistaken for a release and stops before any live key is touched.
+          # that cannot be mistaken for a release.
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             version="0.0.0-test.${GITHUB_RUN_NUMBER}"
             {
               echo "version=$version"
-              echo "formal=false"
-              echo "dry_run=true"
+              echo "channel=test"
             } >> "$GITHUB_OUTPUT"
-            echo "$version is a dry run: it stages under \`_test/${GITHUB_RUN_ID}/\` and stops." >> "$GITHUB_STEP_SUMMARY"
+            echo "$version is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "dry_run=false" >> "$GITHUB_OUTPUT"
           version="${GITHUB_REF_NAME#cli/v}"
           if [ -z "$version" ] || [ "$version" = "$GITHUB_REF_NAME" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not carry a version (expected cli/v1.2.3)"
             exit 1
           fi
-          # §2 names exactly two shapes. "Contains a hyphen" is broader than that: a tag like
+          # §2 names exactly three shapes. "Contains a hyphen" is broader than that: a tag like
           # `cli/v1.0.1-fix` would build, print one log line, skip the upload and exit green — a
           # release that never was, indistinguishable in the Actions list from one that shipped.
+          # A rehearsal tag carries the version it is rehearsing plus `-test`, and it runs the whole
+          # publish job under `_test/`. `cli/v1.6.2-test` is how the next real release is tried
+          # without spending the number or touching a live key.
+          if printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-test(\.[0-9]+)?$'; then
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "channel=test" >> "$GITHUB_OUTPUT"
+            echo "$version is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
-            echo "::error::$version is not a version — RELEASE.md §2 allows cli/v1.2.3 and cli/v1.2.3-rc.1"
+            echo "::error::$version is not a version — RELEASE.md §2 allows cli/v1.2.3, cli/v1.2.3-rc.1 and cli/v1.2.3-test"
             exit 1
           fi
-          case "$version" in
-            *-*) echo "formal=false" >> "$GITHUB_OUTPUT" ;;
-            *)   echo "formal=true"  >> "$GITHUB_OUTPUT" ;;
-          esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if grep -q '^formal=true' "$GITHUB_OUTPUT"; then
-            echo "$version will be published to the download site." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "$version is a prerelease: it is built and kept as an artifact, not published." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          case "$version" in
+            *-rc.*)
+              echo "channel=none" >> "$GITHUB_OUTPUT"
+              echo "$version is a prerelease: it is built and kept as an artifact, not published." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "channel=live" >> "$GITHUB_OUTPUT"
+              echo "$version will be published to the download site." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -294,9 +303,9 @@ jobs:
   publish:
     name: Upload the formal version
     needs: build
-    # A dry run publishes nowhere, but it is the upload path that is being tested, so it runs the
-    # same job and turns left at the first live key instead.
-    if: needs.build.outputs.formal == 'true' || needs.build.outputs.dry_run == 'true'
+    # A rehearsal publishes nowhere the site reads, but it is the upload path that is being tested,
+    # so it runs the same job. Everything below is written once and prefixed by `ROOT`.
+    if: needs.build.outputs.channel != 'none'
     runs-on: ubuntu-latest
     # **The upload is behind the same gate as the signing key.** Without this line the production
     # write path (bucket credentials, the objects the site serves) ran outside the protected
@@ -317,6 +326,10 @@ jobs:
       cancel-in-progress: false
     env:
       VERSION: ${{ needs.build.outputs.version }}
+      # **`''` for a live release, `/_test` for a rehearsal.** The rehearsal writes the same layout
+      # one level down — `_test/releases/<version>/` staged, `_test/<name>` live, `_test/version.txt`
+      # — so every step below runs unchanged and nothing the site serves can move.
+      ROOT: ${{ needs.build.outputs.channel == 'test' && '/_test' || '' }}
       # rclone's S3 backend speaks OSS's S3-compatible endpoint, under a remote named `dl`.
       #
       # **`dl:path`, never `:dl:path`.** The leading colon is rclone's connection-string form, and
@@ -380,9 +393,11 @@ jobs:
       # older build and passes its own check, because local and remote agree. `version.txt` is the
       # one object that remembers which release the site is actually serving.
       - name: Refuse to replace a newer published version
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
+          # A rehearsal has no live marker to defend: its `version.txt` lives under `_test/` and is
+          # written by the same step below.
+          if [ -n "$ROOT" ]; then echo "rehearsal: the live version marker is not involved"; exit 0; fi
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
           # **Only a 404 means "no marker yet".** `if ! curl …` treated every failure as absent —
           # a DNS blip or one 503 would have switched the guard off and let an old tag overwrite
@@ -426,13 +441,7 @@ jobs:
           # to *create* the bucket — which OSS answers with `409 BucketAlreadyExists` (2026-10-26,
           # seventh release attempt). The uploader knows the bucket exists; the check is a read
           # permission the release key has no reason to hold.
-          # A dry run stages under `_test/<run id>/`, which no installer reads and no version
-          # guard covers: nothing here can become what the site serves.
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            staging="dl:${OSS_BUCKET}/_test/${GITHUB_RUN_ID}"
-          else
-            staging="dl:${OSS_BUCKET}/releases/${VERSION}"
-          fi
+          staging="dl:${OSS_BUCKET}${ROOT}/releases/${VERSION}"
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
@@ -444,11 +453,7 @@ jobs:
       - name: The staging area holds all thirteen objects
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/_test/${GITHUB_RUN_ID}"
-          else
-            base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/releases/${VERSION}"
-          fi
+          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/releases/${VERSION}"
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
             name="$(basename "$f")"
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
@@ -478,10 +483,9 @@ jobs:
       # fetched can always be verified; and the version marker is written only once everything it
       # vouches for is in place.
       - name: Promote the staged objects to the live keys
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          staging="dl:${OSS_BUCKET}/releases/${VERSION}"
+          staging="dl:${OSS_BUCKET}${ROOT}/releases/${VERSION}"
           # The thirteen objects, in §6's order, in one place: the promote loop, the header check and
           # the repair all have to mean the same thirteen or the check is a spot check.
           objects() {
@@ -499,7 +503,7 @@ jobs:
               rclone copyto --s3-no-check-bucket --retries 3 --ignore-times --s3-acl public-read \
                 --header-upload "Cache-Control: no-cache" \
                 \
-                "$f" "dl:${OSS_BUCKET}/$name"
+                "$f" "dl:${OSS_BUCKET}${ROOT}/$name"
             done < <(objects)
           }
           # Prints "<http status> <Cache-Control value>". The status travels with the value because
@@ -509,7 +513,7 @@ jobs:
           cache_of() {
             : > /tmp/cache.headers
             code="$(curl -sSI -o /tmp/cache.headers -w '%{http_code}' --retry 5 --retry-delay 3 \
-              "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/$1")" || code=000
+              "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/$1")" || code=000
             value="$(tr -d '\r' < /tmp/cache.headers |
               awk -F':' 'tolower($1)=="cache-control"{ sub(/^[ \t]+/, "", $2); print $2 }')" || value=""
             printf '%s %s\n' "${code:-000}" "$value"
@@ -544,7 +548,7 @@ jobs:
             for f in "${lost[@]}"; do
               rclone copyto --s3-no-check-bucket --retries 3 --ignore-times --s3-acl public-read \
                 --header-upload "Cache-Control: no-cache" \
-                "$f" "dl:${OSS_BUCKET}/$(basename "$f")"
+                "$f" "dl:${OSS_BUCKET}${ROOT}/$(basename "$f")"
             done
             for f in "${lost[@]}"; do
               read -r cache_status cache_value <<< "$(cache_of "$(basename "$f")")"
@@ -559,7 +563,7 @@ jobs:
 
           printf '%s\n' "$VERSION" > /tmp/version.txt
           rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
-            /tmp/version.txt "dl:${OSS_BUCKET}/version.txt"
+            /tmp/version.txt "dl:${OSS_BUCKET}${ROOT}/version.txt"
 
           # **Ask the marker, do not assume the write worked.** Everything above is already live;
           # if the marker did not land, the next release would read a stale version and a re-run of
@@ -568,7 +572,7 @@ jobs:
           # The status is read on its own line: under `set -e`, `curl -f` on a missing marker ends
           # the step with curl's own error — which is exactly the case this message explains.
           marker_status="$(curl -sS -o /tmp/marker -w '%{http_code}' --retry 5 --retry-delay 3 \
-            "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/version.txt")" || marker_status=000
+            "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/version.txt")" || marker_status=000
           marker="$(cat /tmp/marker 2>/dev/null || true)"
           if [ "$marker_status" != "200" ] || [ "$marker" != "$VERSION" ]; then
             echo "::error::the thirteen objects are live but version.txt answers HTTP $marker_status and says '$marker' instead of '$VERSION'; re-run this tag to finish"
@@ -586,10 +590,9 @@ jobs:
       # because the bucket is the origin; the proxied name is asked from the host instead, in the
       # step after this one.
       - name: The bucket serves what was just published
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
+          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}"
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
             name="$(basename "$f")"
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
@@ -618,9 +621,8 @@ jobs:
       # through the bucket endpoint, which the runner can reach; nginx and its certificate
       # are checked by the server repository's host check.
       - name: The bucket serves the published installer
-        if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/install.sh"
+          url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/install.sh"
           curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
           echo "the bucket serves install.sh"
