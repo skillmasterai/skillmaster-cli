@@ -145,6 +145,9 @@ jobs:
             set -e
             printf '%-14s upload exit %s, anonymous GET %s\n' "$name" "$rc" "$(code "$name")"
             [ -n "$out" ] && printf '  %s\n' "$out"
+            # Without this the function's status is the `[ -n "$out" ]` above, and an upload that
+            # printed nothing (the successful ones) ends the step under `set -e`.
+            return 0
           }
           echo "== default (private) =="
           upload plain.txt
