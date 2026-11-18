@@ -1,0 +1,194 @@
+# A dry run of the release packaging, against the real bucket but under `_test/`. It builds the same
+# six packages, the same skill archive and the same checksums as `cli-release.yml`, uploads them to
+# `_test/<run id>/`, and reads every one back anonymously. Nothing under `releases/`, no live key,
+# no `version.txt`, no tag — a run that fails here costs nothing.
+#
+# Why it exists: `cli/v1.6.0` and `cli/v1.6.1` both failed at "the staging area holds all thirteen
+# objects". Every freshly uploaded key answered 403 to an anonymous GET, while keys from 1.5.x still
+# answered 200 and keys that do not exist answered 404 — so the upload worked and the objects were
+# private. OSS's S3-compatible PutObject defaults to private; the release needs to say otherwise.
+# The first attempt passed `x-oss-object-acl` through `--header-upload` and still got 403. This
+# pipeline tries the three spellings side by side so the working one is a measurement.
+#
+# It deliberately skips cosign, minisign and the attestation: those need the `release` environment's
+# key, and they already succeeded in 1.6.0/1.6.1 — the failure was never in signing.
+name: Test package
+
+on:
+  # `workflow_dispatch` only runs a file that is on the default branch, and this pipeline exists to
+  # avoid going through main for every attempt. A push that touches this file runs it.
+  push:
+    paths:
+      - '.github/workflows/package-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OSS_BUCKET: skillmaster-dl
+  UPDATE_BASE: https://dl.skillmasterai.com
+
+jobs:
+  package:
+    name: Build the packages tests and upload them to _test/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # Same commands as `cli-release.yml` §3/§4, minus the tag and minus the signatures. The
+      # version string is a test one on purpose: if one of these binaries ever escaped to the
+      # download site, `skmr --version` would say so.
+      - name: Cross-compile and package
+        env:
+          VERSION: 0.0.0-test.${{ github.run_number }}
+          SERVER: ${{ vars.SKILLMASTER_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SERVER" ]; then
+            echo "::error::vars.SKILLMASTER_PUBLIC_BASE_URL is empty — a release built without it talks to localhost"
+            exit 1
+          fi
+          ldflags="-s -w"
+          ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.Version=${VERSION}"
+          ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/config.DefaultServer=${SERVER}"
+          ldflags="$ldflags -X github.com/skillmasterai/skillmaster-cli/internal/version.UpdateBase=${UPDATE_BASE}"
+          root="$GITHUB_WORKSPACE"
+          build="$root/.build"
+          dist="$root/dist"
+          mkdir -p "$build" "$dist"
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            ext=""; [ "$os" = windows ] && ext=".exe"
+            out="$build/${os}-${arch}"
+            mkdir -p "$out"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags "$ldflags" -o "${out}/skmr${ext}" ./cmd/skillmaster
+            name="skillmaster_${os}_${arch}"
+            if [ "$os" = windows ]; then
+              (cd "$out" && zip -q -9 "$dist/${name}.zip" "skmr.exe")
+            else
+              tar -czf "$dist/${name}.tar.gz" -C "$out" skmr
+            fi
+            echo "built ${name}"
+          done
+
+      - name: Pack the skill
+        env:
+          SKILLS_COMMIT: 7a9de7941029f9badc8563da10ab6d620234ef63
+        run: |
+          set -euo pipefail
+          url="https://raw.githubusercontent.com/skillmasterai/skillmaster-skills/${SKILLS_COMMIT}/skills/skillmaster/SKILL.md"
+          tmp="$RUNNER_TEMP/skill"
+          rm -rf "$tmp"; mkdir -p "$tmp/skillmaster"
+          curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-delay 2 "$url" \
+            -o "$tmp/skillmaster/SKILL.md"
+          [ "$(find "$tmp/skillmaster" -type f | wc -l | tr -d ' ')" -eq 1 ]
+          head -n 1 "$tmp/skillmaster/SKILL.md" | grep -qx -- '---'
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -czf "$GITHUB_WORKSPACE/dist/skillmaster.tgz" -C "$tmp" skillmaster
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum skillmaster_*.tar.gz skillmaster_*.zip skillmaster.tgz > checksums.txt
+          ( cd "$GITHUB_WORKSPACE/install" && sha256sum install.sh install.ps1 ) >> checksums.txt
+          cat checksums.txt
+
+      - name: Install rclone
+        run: |
+          set -euo pipefail
+          timeout 240 sudo apt-get update -qq
+          timeout 240 sudo apt-get install -y -qq rclone
+          rclone version | head -3
+          echo "--- --s3-acl in this build? ---"
+          rclone help flags | grep -i 's3-acl' || echo "no --s3-acl flag in this build"
+
+      - name: Point rclone at the download bucket
+        env:
+          ACCESS_KEY_ID: ${{ secrets.OSS_DL_ACCESS_KEY_ID }}
+          ACCESS_KEY_SECRET: ${{ secrets.OSS_DL_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.config/rclone"
+          cat > "$HOME/.config/rclone/rclone.conf" <<EOF
+          [dl]
+          type = s3
+          provider = Alibaba
+          access_key_id = ${ACCESS_KEY_ID}
+          secret_access_key = ${ACCESS_KEY_SECRET}
+          endpoint = https://oss-cn-hangzhou.aliyuncs.com
+          EOF
+          rclone listremotes
+
+      - name: Which ACL spelling actually works
+        run: |
+          set -euo pipefail
+          prefix="_test/${GITHUB_RUN_ID}"
+          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
+          printf 'probe %s\n' "${GITHUB_RUN_ID}" > /tmp/plain.txt
+          code() { curl -sS -o /dev/null -w '%{http_code}' "$base/${prefix}/$1" || echo 000; }
+          upload() {
+            name="$1"; shift
+            set +e
+            out="$(rclone copyto --s3-no-check-bucket --retries 1 "$@" /tmp/plain.txt "dl:${OSS_BUCKET}/${prefix}/${name}" 2>&1)"
+            rc=$?
+            set -e
+            printf '%-14s upload exit %s, anonymous GET %s\n' "$name" "$rc" "$(code "$name")"
+            [ -n "$out" ] && printf '  %s\n' "$out"
+          }
+          echo "== default (private) =="
+          upload plain.txt
+          echo "== --s3-acl public-read =="
+          upload s3acl.txt --s3-acl public-read
+          echo "== --header-upload x-oss-object-acl: public-read =="
+          upload hdr-oss.txt --header-upload "x-oss-object-acl: public-read"
+          echo "== --header-upload x-amz-acl: public-read =="
+          upload hdr-amz.txt --header-upload "x-amz-acl: public-read"
+          # **Only request headers that mention an ACL.** `--dump headers` also prints
+          # `Authorization:`, and this repository is public — the log must not carry a signed request.
+          echo "== what rclone sends for --s3-acl public-read =="
+          rclone copyto -vv --dump headers --s3-no-check-bucket --s3-acl public-read \
+            /tmp/plain.txt "dl:${OSS_BUCKET}/${prefix}/dumped.txt" 2>&1 \
+            | grep -E '^> .*acl' || echo "no ACL header was sent"
+
+      - name: Upload the packages under _test/ and read every one back
+        run: |
+          set -euo pipefail
+          prefix="_test/${GITHUB_RUN_ID}"
+          base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com"
+          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
+                   install/install.sh install/install.ps1; do
+            rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
+              "$f" "dl:${OSS_BUCKET}/${prefix}/$(basename "$f")"
+          done
+          rclone lsf --s3-no-check-bucket "dl:${OSS_BUCKET}/${prefix}" | sort
+          failed=0
+          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
+            name="$(basename "$f")"
+            code="$(curl -sS -o "/tmp/$name" -w '%{http_code}' --retry 3 "$base/${prefix}/$name")"
+            if [ "$code" != 200 ]; then echo "::error::$name read back as HTTP $code"; failed=1; continue; fi
+            want="$(awk -v n="$name" '$2 == n { print $1 }' dist/checksums.txt)"
+            got="$(sha256sum "/tmp/$name" | awk '{ print $1 }')"
+            [ "$want" = "$got" ] || { echo "::error::$name read back but its bytes differ"; failed=1; }
+          done
+          for name in checksums.txt install.sh install.ps1; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "$base/${prefix}/$name")"
+            [ "$code" = 200 ] || { echo "::error::$name read back as HTTP $code"; failed=1; }
+          done
+          exit "$failed"
+
+      - name: Where the test objects are
+        if: always()
+        run: |
+          echo "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/_test/${GITHUB_RUN_ID}/" >> "$GITHUB_STEP_SUMMARY"
+          echo "These objects are left in place as evidence; nothing in \`releases/\` or \`version.txt\` was touched." >> "$GITHUB_STEP_SUMMARY"
