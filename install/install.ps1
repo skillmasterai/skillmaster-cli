@@ -197,7 +197,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
 
                 $env:Path = "$env:Path;$InstallDir"
                 Say ""
-                Say "已把 $InstallDir 加进用户 PATH——**新开**一个终端它才会生效。"
+                Say "已把 $InstallDir 加进用户 PATH——新开一个终端它才会生效。"
             }
         }
     } catch {
