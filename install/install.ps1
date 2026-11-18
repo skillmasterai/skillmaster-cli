@@ -153,34 +153,58 @@ try {
     # `%JAVA_HOME%\bin` turns into whatever it expanded to during the install — or stays literal
     # while Windows never expands it again. Either way that entry stops following its variable and
     # another tool quietly drops off PATH. Read unexpanded, write back as the same kind.
-    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    # **Nothing in here may end the install.** The binary is already in place; a locked-down
+    # registry, a missing HKCU\Environment (OpenSubKey returns $null, it does not throw) or
+    # ConstrainedLanguage blocking Add-Type would otherwise abort a successful install and report
+    # failure after the files are already written. A PATH we could not update is a sentence.
+    $key = $null
     try {
-        $kind = [Microsoft.Win32.RegistryValueKind]::String
-        try { $kind = $key.GetValueKind('Path') } catch { }
-        $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-        if (($raw -split ';') -notcontains $InstallDir) {
-            $newPath = if ([string]::IsNullOrEmpty($raw)) { $InstallDir } else { "$raw;$InstallDir" }
-            $key.SetValue('Path', $newPath, $kind)
+        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+        if (-not $key) {
+            Say ""
+            Say "没能打开用户 PATH（HKCU\Environment 不存在）；请手动把 $InstallDir 加进 PATH。"
+        } else {
+            $kind = [Microsoft.Win32.RegistryValueKind]::String
+            try { $kind = $key.GetValueKind('Path') } catch { }
+            $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
 
-            # The API we are not using broadcasts this itself; writing the registry does not, and
-            # without it a terminal opened from an already-running Explorer keeps the old PATH.
-            if (-not ('Win32.EnvBroadcast' -as [type])) {
-                Add-Type -Namespace Win32 -Name EnvBroadcast -MemberDefinition @'
+            # Compare *expanded* segments: an entry written as `%LOCALAPPDATA%\SkillMaster\bin`
+            # names this directory even though its raw text does not.
+            $present = $false
+            foreach ($segment in ($raw -split ';')) {
+                if ([string]::IsNullOrWhiteSpace($segment)) { continue }
+                if ([Environment]::ExpandEnvironmentVariables($segment).TrimEnd('\') -eq $InstallDir.TrimEnd('\')) { $present = $true; break }
+            }
+
+            if (-not $present) {
+                $newPath = if ([string]::IsNullOrEmpty($raw)) { $InstallDir } else { "$raw;$InstallDir" }
+                $key.SetValue('Path', $newPath, $kind)
+
+                # The API we are not using broadcasts this itself; writing the registry does not,
+                # and without it a terminal opened from an already-running Explorer keeps the old
+                # PATH. Add-Type compiles C#, which ConstrainedLanguage refuses — hence its own
+                # catch: the entry is written either way, only the broadcast may be missing.
+                try {
+                    if (-not ('Win32.EnvBroadcast' -as [type])) {
+                        Add-Type -Namespace Win32 -Name EnvBroadcast -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@
-            }
-            try {
-                $sent = [UIntPtr]::Zero
-                [Win32.EnvBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 1000, [ref]$sent) | Out-Null
-            } catch { }
+                    }
+                    $sent = [UIntPtr]::Zero
+                    [Win32.EnvBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 1000, [ref]$sent) | Out-Null
+                } catch { }
 
-            $env:Path = "$env:Path;$InstallDir"
-            Say ""
-            Say "已把 $InstallDir 加进用户 PATH——**新开**一个终端它才会生效。"
+                $env:Path = "$env:Path;$InstallDir"
+                Say ""
+                Say "已把 $InstallDir 加进用户 PATH——**新开**一个终端它才会生效。"
+            }
         }
+    } catch {
+        Say ""
+        Say "没能写入用户 PATH；请手动把 $InstallDir 加进 PATH。"
     } finally {
-        $key.Close()
+        if ($key) { $key.Close() }
     }
 
     Say ""

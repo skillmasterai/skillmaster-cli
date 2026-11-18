@@ -12,16 +12,28 @@
 # working command with a file that cannot exec.
 set -eu
 
-# `set -u` turns a missing HOME into `install.sh: 17: HOME: parameter not set` — no `install:`
-# prefix, no hint at what to do. Agent sandboxes run this with a stripped environment, so say it.
-: "${HOME:?install: HOME 没有设置，无法决定安装目录（设 SKILLMASTER_INSTALL_DIR 也可以）}"
-
 BASE_URL="${SKILLMASTER_DL_URL:-https://dl.skillmasterai.com}"
 # An override exists for testing and for a mirror; the default is the only address users see.
-INSTALL_DIR="${SKILLMASTER_INSTALL_DIR:-$HOME/.local/bin}"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'install: %s\n' "$*" >&2; exit 1; }
+
+# `set -u` turns a missing HOME into `install.sh: 17: HOME: parameter not set` — no `install:`
+# prefix, no hint at what to do. Agent sandboxes run this with a stripped environment, so say it.
+# A caller that supplies `SKILLMASTER_INSTALL_DIR` does not need HOME at all, which is why this is
+# a check rather than `${HOME:?}`: that form would refuse the very case it should accept.
+if [ -z "${SKILLMASTER_INSTALL_DIR:-}" ] && [ -z "${HOME:-}" ]; then
+  die "HOME 没有设置，无法决定安装目录（设 SKILLMASTER_INSTALL_DIR 也可以）"
+fi
+INSTALL_DIR="${SKILLMASTER_INSTALL_DIR:-$HOME/.local/bin}"
+
+# **Pin https only when the base is https.** The override exists for mirrors and for local test
+# servers; `--proto '=https'` on an `http://` override refuses every download, which is how the
+# published script and the install page would disagree about what a mirror may be.
+case "$BASE_URL" in
+  https://*) proto="--proto =https --proto-redir =https" ;;
+  *) proto="" ;;
+esac
 
 # --- 1. Pick the package -----------------------------------------------------
 
@@ -63,7 +75,7 @@ trap 'say "安装被中断；如果 $INSTALL_DIR/skmr 已存在，它可能不�
 say "下载 $BASE_URL/$artifact"
 # No `--retry-all-errors`: it needs curl 7.71, and the machines most likely to run this are the
 # oldest ones. A 404 is not retried either way; `--retry` already covers the transient cases.
-curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-delay 2 -o "$tmp/$artifact" "$BASE_URL/$artifact" ||
+curl $proto -fsSL --retry 3 --retry-delay 2 -o "$tmp/$artifact" "$BASE_URL/$artifact" ||
   die "下载失败：$BASE_URL/${artifact}（网络，或这个平台暂时没有产物）"
 # **A caller that already verified the manifest passes it in.** The page verifies a signed
 # `checksums.txt` and then runs this script; without this, the script would download a fresh
@@ -73,7 +85,7 @@ if [ -n "$sums" ]; then
   [ -f "$sums" ] || die "SKILLMASTER_CHECKSUMS 指向的文件不存在：$sums"
 else
   sums="$tmp/checksums.txt"
-  curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-delay 2 -o "$sums" "$BASE_URL/checksums.txt" ||
+  curl $proto -fsSL --retry 3 --retry-delay 2 -o "$sums" "$BASE_URL/checksums.txt" ||
     die "下载失败：$BASE_URL/checksums.txt"
 fi
 
@@ -149,6 +161,8 @@ say ""
 # **Only print this when there is something to configure.** A terminal-only user with none of these
 # tools installed should not be handed a security question about them.
 has_clients() {
+  # No HOME, no client directories to look at — and `set -u` would abort on the first `$HOME` below.
+  [ -n "${HOME:-}" ] || return 1
   for dir in \
     "$HOME/.workbuddy" \
     "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" \
