@@ -162,7 +162,7 @@ jobs:
       # was signed. Bumping it is a pull request, reviewed like any other change.
       - name: Pack the skill
         env:
-          SKILLS_COMMIT: d388e49b2e6f818bcb81f7eb80b5a7bb0966383c
+          SKILLS_COMMIT: 7a9de7941029f9badc8563da10ab6d620234ef63
         run: |
           set -euo pipefail
           printf '%s' "$SKILLS_COMMIT" | grep -Eq '^[0-9a-f]{40}$' ||
