@@ -60,7 +60,7 @@ git tag cli/v1.0.0 && git push origin cli/v1.0.0
 
 - **文件名不带版本号**。这样下载地址永久稳定，安装说明不用跟着每次发版改。版本号由二进制自己说。
 - **unix 用 `.tar.gz`，Windows 用 `.zip`**——跟 Go 自己和绝大多数项目的做法一致，Windows 上双击就能解。
-- 每次发布另有：`checksums.txt`（六个包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
+- 每次发布另有：`checksums.txt`（六个平台包、技能包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
 
 ## 5 · 构建参数
 
@@ -97,16 +97,18 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **不放 GitHub Releases**：目标用户在国内，那个域名对他们不可用。git tag 仍然标记版本历史，但**产物只有一个家**。构建来源证明（attestation）存在 GitHub 上，它证明的是「这些字节由哪条工作流、哪个提交构建」，不是产物的下载地址。
 
+**技能包也在这里发。** `skillmaster.tgz`（只有 `skillmaster/SKILL.md`）从公开仓库 `skillmasterai/skillmaster-skills` 的固定提交取来，打进 `dist/`，因此它同样列在 `checksums.txt` 里、同样被 attestation 与两个签名覆盖。站点不再发布这份包——否则页面部署一次就会用未签名的字节盖掉签名产物的地址。它是**连不上 GitHub、没有 Node** 的用户的兜底安装路径。
+
 **可验证性**：每次发布同时产出三种独立证明。`checksums.txt.sigstore.json` 是 cosign keyless 签名，绑定本仓库工作流的 GitHub OIDC 身份并记入 Sigstore 透明日志；`checksums.txt.minisig` 是 minisign 签名，配合同次发布的 `minisign.pub`，可以完全离线验证。GitHub 的构建来源证明用 `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli` 核对。三者证明的是不同的事：签名说明「这次发布由谁签」，attestation 说明「这些字节由哪次构建产生」。
 
-**上传顺序**：先六个包 → 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
+**上传顺序**：先六个平台包与一个技能包（`skillmaster.tgz`）→ 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
 
 **先暂存，再动线上的键。** 键名不带版本号，一次传到一半就会留下「一版的包 + 另一版的校验和」，那三平台上的安装全部失败。所以先传进 `releases/<版号>/`，在那里逐个核对，再逐个搬到正式键上。S3 没有多对象提交，窗口只能缩短、不能关闭——窗口很短，安装脚本本身会失败退出，重跑同一个 tag 能补齐（见上一条的例外）。
 
 **暂存的前缀是公开的、不会自动清理的。** `releases/<版号>/` 在同一个公共读 bucket 里，所以整份也
 可以按地址取到（`https://dl.skillmasterai.com/releases/<版号>/…`）。它同时是**手工恢复**时唯一
 现成的来源——但**「重跑旧 tag」不是恢复手段**，那会被下面的守卫直接拒绝。恢复是两步手工动作：
-把那一版的十二个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
+把那一版的十三个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
 「新标记 + 旧产物」；改回去，那个旧版号也就重新可以发了）。代价值得写下来——每次正式发布会留下
 约 50 MB，删旧前缀是手工动作，见 [部署说明](../deploy/README.md)。
 
@@ -155,7 +157,7 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 |---|---|
 | 版本串 | **测试期内固定**：`1.5.0-beta`（v79 起）。同一提交的正式构建叫 `1.5.0`；beta 通道在 `1.5.0` 发布后仍叫 `1.5.0-beta`，到 `1.6.0` 开线再改 |
 | 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.5.0-beta (a1b2c3d) (API v1)` |
-| 落在哪 | 桶的 `beta/` 下的十二个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
+| 落在哪 | 桶的 `beta/` 下的十三个对象 + `beta/version.txt`（内容 `1.5.0-beta (a1b2c3d)`）+ `beta/releases/<版本>-<提交号>/` 暂存区 |
 | 怎么装 | `curl -fsSL https://dl.skillmasterai.com/beta/install.sh \| SKILLMASTER_DL_URL=https://dl.skillmasterai.com/beta sh` |
 | 怎么更新 | 自动更新（v25）按编进去的 `beta/` 通道检查；也可以重跑那条安装命令，看 `--version` 的提交号变没变 |
 | 承诺 | 只有一条：装上的构建说得出来自哪次提交。命令面、状态、数据都不保证 |
@@ -176,4 +178,3 @@ irm https://dl.skillmasterai.com/install.ps1 | iex         # Windows PowerShell
 
 - **Windows 没有真机实测过，但从 `1.5.0` 起宣称支持。** `windows/amd64` 与 `windows/arm64` 能交叉编译出来（2026-10-25；不加 `-s -w` 时 12 MB / 11 MB，加了之后 amd64 是 8.5 MB），Windows 上的首次登录、`install.ps1` 的 PATH 写入、`.zip` 解包 —— **都没有在真实 Windows 上跑过**。2026-11-16 的决定与欠账见 [ADR 0218](../docs/decisions/0218-windows-is-claimed-without-a-real-machine.md) 与 [v79 test-plan](../docs/versions/v79-cli-1-5-formal/test-plan.md) §已知问题 K1；这里的「支持」指包能构建、安装说明覆盖 Windows，真机验收仍未执行。
 - **32 位 Windows / 32 位 Linux / FreeBSD / ppc64le / s390x 不发**，理由见 §3。
-- **没有校验和签名**。只有 SHA-256，且它和包在同一台服务器上——这挡得住传输损坏，挡不住有人能写这个 bucket。
