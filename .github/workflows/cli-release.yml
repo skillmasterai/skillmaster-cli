@@ -424,6 +424,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # The Gitee mirror pushes this history; a depth-1 clone cannot be pushed.
+          fetch-depth: 0
 
       - name: Fetch the packages
         uses: actions/download-artifact@v4
@@ -760,3 +763,61 @@ jobs:
               --title "$VERSION" --notes "$notes" --verify-tag
           fi
           gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | sort
+
+      # **The same manifest at an origin that is reachable from mainland China.** The two-origin
+      # check is only worth writing down if the reader can open the second origin, and GitHub is
+      # not reliably reachable there. Gitee keeps a source mirror and, on a `releases` branch, the
+      # same `checksums.txt` — written by this run, so the two cannot drift.
+      #
+      # `releases` never merges with `main`, so mirroring the source cannot collide with it. A
+      # rehearsal is skipped: it publishes nothing, so there is nothing to mirror.
+      - name: Mirror the source and the manifest to Gitee
+        if: needs.build.outputs.channel != 'test'
+        env:
+          GITEE_DEPLOY_KEY: ${{ secrets.GITEE_DEPLOY_KEY }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEE_DEPLOY_KEY:-}" ]; then
+            echo "::error::GITEE_DEPLOY_KEY is empty — the release is live but the Gitee mirror will not be, and the install page promises it; add the secret and re-run this tag"
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/gitee"
+          install -d -m 700 "$dir"
+          printf '%s\n' "$GITEE_DEPLOY_KEY" > "$dir/key"
+          chmod 600 "$dir/key"
+          ssh-keyscan gitee.com > "$dir/known_hosts" 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts"
+          remote="git@gitee.com:skillmasterai/skillmaster-cli.git"
+          identity=(-c user.name="SkillMaster Bot" -c user.email="bot@skillmasterai.com")
+
+          # The source. Only the live channel touches `main`; a beta build is the same tree.
+          if [ "$CHANNEL" = live ]; then
+            git push --force "$remote" "HEAD:refs/heads/main"
+          fi
+
+          # The manifest, on the branch nobody merges.
+          work="$RUNNER_TEMP/gitee-releases"
+          git clone --quiet --branch releases --single-branch "$remote" "$work"
+          install -d "$work/v$VERSION"
+          cp dist/checksums.txt "$work/v$VERSION/checksums.txt"
+          cp dist/checksums.txt.minisig "$work/v$VERSION/checksums.txt.minisig"
+          cp dist/minisign.pub "$work/minisign.pub"
+          git -C "$work" "${identity[@]}" add -A
+          if git -C "$work" diff --cached --quiet; then
+            echo "the Gitee manifest already matches this build"
+          else
+            git -C "$work" "${identity[@]}" commit --quiet -m "Publish the $VERSION checksums"
+            git -C "$work" push --quiet origin releases
+          fi
+
+          # Read it back anonymously: the promise is a public URL, not a push that exited 0.
+          url="https://gitee.com/skillmasterai/skillmaster-cli/raw/releases/v$VERSION/checksums.txt"
+          got="$RUNNER_TEMP/gitee-checksums.txt"
+          curl -fsSL --retry 5 --retry-delay 3 -o "$got" "$url"
+          cmp "$got" dist/checksums.txt || {
+            echo "::error::$url does not serve this build's checksums.txt — the install page would compare two different files"
+            exit 1
+          }
+          echo "Gitee serves v$VERSION/checksums.txt byte for byte"
+
