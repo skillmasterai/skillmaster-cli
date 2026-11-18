@@ -286,8 +286,23 @@ jobs:
             echo "::error::MINISIGN_SECRET_KEY is empty — refusing to publish an unsigned release"
             exit 1
           fi
-          timeout 240 sudo apt-get update -qq
-          timeout 240 sudo apt-get install -y -qq minisign
+          # **The runner's apt mirror sometimes goes dark.** `apt-get update` has no per-request
+          # timeout, so it hangs until our own `timeout` kills it — exit 124, twice on 2026-11-18,
+          # each time costing an approved release a run. Ask the image first (it often already has
+          # the tool) and give the network three short attempts instead of one long one.
+          install_pkg() {
+            if command -v "$1" >/dev/null 2>&1; then echo "$1 is already installed"; return 0; fi
+            for attempt in 1 2 3; do
+              if timeout 90 sudo apt-get update -qq && timeout 120 sudo apt-get install -y -qq "$1"; then
+                return 0
+              fi
+              echo "$1: apt attempt $attempt of 3 failed; retrying in 10s"
+              sleep 10
+            done
+            echo "::error::could not install $1 in three attempts — the runner could not reach its mirror"
+            return 1
+          }
+          install_pkg minisign
           install -d "$RUNNER_TEMP/minisign"
           printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign/minisign.key"
           chmod 600 "$RUNNER_TEMP/minisign/minisign.key"
@@ -419,8 +434,23 @@ jobs:
           # checksum or signature; this binary then ran as root and received the release bucket
           # credentials. apt's archive is signed by the distribution, and the runner image does
           # not always ship rclone, so this is the one path that is both available and verifiable.
-          timeout 240 sudo apt-get update -qq
-          timeout 240 sudo apt-get install -y -qq rclone
+          # **The runner's apt mirror sometimes goes dark.** `apt-get update` has no per-request
+          # timeout, so it hangs until our own `timeout` kills it — exit 124, twice on 2026-11-18,
+          # each time costing an approved release a run. Ask the image first (it often already has
+          # the tool) and give the network three short attempts instead of one long one.
+          install_pkg() {
+            if command -v "$1" >/dev/null 2>&1; then echo "$1 is already installed"; return 0; fi
+            for attempt in 1 2 3; do
+              if timeout 90 sudo apt-get update -qq && timeout 120 sudo apt-get install -y -qq "$1"; then
+                return 0
+              fi
+              echo "$1: apt attempt $attempt of 3 failed; retrying in 10s"
+              sleep 10
+            done
+            echo "::error::could not install $1 in three attempts — the runner could not reach its mirror"
+            return 1
+          }
+          install_pkg rclone
           rclone version | head -1
 
       # **A config file, because an environment variable cannot create a remote.** `RCLONE_CONFIG_*`
