@@ -451,7 +451,10 @@ jobs:
             return 1
           }
           install_pkg rclone
-          rclone version | head -1
+          # **Not `| head -1`.** Under `set -o pipefail` head closes the pipe as soon as it has
+          # its line, rclone dies of SIGPIPE, and the step fails with 141 (2026-11-18). `sed -n 1p`
+          # reads the stream to the end.
+          rclone version | sed -n '1p'
 
       # **A config file, because an environment variable cannot create a remote.** `RCLONE_CONFIG_*`
       # only override values of a remote that already exists; with no config file rclone has nothing
