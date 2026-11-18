@@ -385,6 +385,10 @@ jobs:
     # credentials could not be environment-scoped. The same tag answers the same question twice —
     # GitHub approves per job, so this job asks for its own approval after `build`.
     environment: release
+    # Creating the GitHub Release that mirrors these bytes needs to write to the repository; that is
+    # the only repository write this job performs, and it is scoped to this job.
+    permissions:
+      contents: write
     # **Publish runs queue; builds do not.** The keys carry no version, so two publish jobs at once
     # can interleave one version's packages with another's checksums.txt and each can still pass its
     # own check. Scoped to this job because a prerelease build has nothing to collide with.
@@ -420,6 +424,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # The Gitee mirror pushes this history; a depth-1 clone cannot be pushed.
+          fetch-depth: 0
 
       - name: Fetch the packages
         uses: actions/download-artifact@v4
@@ -721,3 +728,99 @@ jobs:
           url="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/install.sh"
           curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
           echo "the bucket serves install.sh"
+          curl -fsS --retry 10 --retry-delay 2 -o /dev/null "$url"
+          echo "the bucket serves install.sh"
+
+      # **The same bytes at a second origin, for readers with no tools.** Every other proof on the
+      # install page needs something installed: minisign, cosign, or `gh`. A reader with none of
+      # them can still fetch `checksums.txt` from the download site and from this release and
+      # compare the two — nothing but `curl` and `cmp` (or `Invoke-WebRequest` on Windows). That
+      # answers a narrower question than a signature ("do the two origins agree?"), and it is the
+      # only one that reader can ask; serving them different bytes now takes both the bucket and
+      # this repository.
+      #
+      # A rehearsal stays out: its tag is not a release anyone should download.
+      - name: Publish the same files as a GitHub Release
+        if: needs.build.outputs.channel != 'test'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=(
+            dist/skillmaster_*.tar.gz
+            dist/skillmaster_*.zip
+            dist/skillmaster.tgz
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+            dist/checksums.txt.minisig
+            dist/minisign.pub
+            install/install.sh
+            install/install.ps1
+          )
+          notes="The same bytes as https://dl.skillmasterai.com. On a machine with no minisign, no cosign and no gh: download checksums.txt from both places and compare them."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Re-running a tag is how a half-finished publication is repaired; the assets follow.
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "$VERSION" --notes "$notes" --verify-tag
+          fi
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | sort
+
+      # **The same manifest at an origin that is reachable from mainland China.** The two-origin
+      # check is only worth writing down if the reader can open the second origin, and GitHub is
+      # not reliably reachable there. Gitee keeps a source mirror and, on a `releases` branch, the
+      # same `checksums.txt` — written by this run, so the two cannot drift.
+      #
+      # `releases` never merges with `main`, so mirroring the source cannot collide with it. A
+      # rehearsal is skipped: it publishes nothing, so there is nothing to mirror.
+      - name: Mirror the source and the manifest to Gitee
+        if: needs.build.outputs.channel != 'test'
+        env:
+          GITEE_DEPLOY_KEY: ${{ secrets.GITEE_DEPLOY_KEY }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEE_DEPLOY_KEY:-}" ]; then
+            echo "::error::GITEE_DEPLOY_KEY is empty — the release is live but the Gitee mirror will not be, and the install page promises it; add the secret and re-run this tag"
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/gitee"
+          install -d -m 700 "$dir"
+          printf '%s\n' "$GITEE_DEPLOY_KEY" > "$dir/key"
+          chmod 600 "$dir/key"
+          ssh-keyscan gitee.com > "$dir/known_hosts" 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts"
+          remote="git@gitee.com:skillmasterai/skillmaster-cli.git"
+          identity=(-c user.name="SkillMaster Bot" -c user.email="bot@skillmasterai.com")
+
+          # The source. Only the live channel touches `main`; a beta build is the same tree.
+          if [ "$CHANNEL" = live ]; then
+            git push --force "$remote" "HEAD:refs/heads/main"
+          fi
+
+          # The manifest, on the branch nobody merges.
+          work="$RUNNER_TEMP/gitee-releases"
+          git clone --quiet --branch releases --single-branch "$remote" "$work"
+          install -d "$work/v$VERSION"
+          cp dist/checksums.txt "$work/v$VERSION/checksums.txt"
+          cp dist/checksums.txt.minisig "$work/v$VERSION/checksums.txt.minisig"
+          cp dist/minisign.pub "$work/minisign.pub"
+          git -C "$work" "${identity[@]}" add -A
+          if git -C "$work" diff --cached --quiet; then
+            echo "the Gitee manifest already matches this build"
+          else
+            git -C "$work" "${identity[@]}" commit --quiet -m "Publish the $VERSION checksums"
+            git -C "$work" push --quiet origin releases
+          fi
+
+          # Read it back anonymously: the promise is a public URL, not a push that exited 0.
+          url="https://gitee.com/skillmasterai/skillmaster-cli/raw/releases/v$VERSION/checksums.txt"
+          got="$RUNNER_TEMP/gitee-checksums.txt"
+          curl -fsSL --retry 5 --retry-delay 3 -o "$got" "$url"
+          cmp "$got" dist/checksums.txt || {
+            echo "::error::$url does not serve this build's checksums.txt — the install page would compare two different files"
+            exit 1
+          }
+          echo "Gitee serves v$VERSION/checksums.txt byte for byte"
+
