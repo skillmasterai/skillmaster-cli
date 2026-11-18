@@ -290,7 +290,7 @@ jobs:
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
-            rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
+            rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
               "$f" "dl:${OSS_BUCKET}/${staging}/$(basename "$f")"
           done
           rclone lsf --s3-no-check-bucket "dl:${OSS_BUCKET}/${staging}" | sort
@@ -339,10 +339,14 @@ jobs:
               dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
               install/install.sh install/install.ps1
           }
+          # **From the local artifact, not a server-side copy.** A copy carries no upload headers,
+          # so the object would land private and every beta URL would answer 403.
           while IFS= read -r f; do
             name="$(basename "$f")"
-            rclone copyto --s3-no-check-bucket --retries 3 \
-              "dl:${OSS_BUCKET}/${STAGING}/$name" "dl:${OSS_BUCKET}/${PREFIX}$name"
+            rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
+              --header-upload "Cache-Control: no-cache" \
+              --header-upload "x-oss-object-acl: public-read" \
+              "$f" "dl:${OSS_BUCKET}/${PREFIX}$name"
           done < <(objects)
 
           cache_of() {
@@ -371,7 +375,7 @@ jobs:
             echo "${#lost[@]} object(s) lost Cache-Control in the copy; re-uploading them"
             for f in "${lost[@]}"; do
               rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
-                --header-upload "Cache-Control: no-cache" \
+                --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
                 "$f" "dl:${OSS_BUCKET}/${PREFIX}$(basename "$f")"
             done
             for f in "${lost[@]}"; do
@@ -395,7 +399,7 @@ jobs:
           set -euo pipefail
           marker_text="$VERSION ($REVISION)"
           printf '%s\n' "$marker_text" > /tmp/version.txt
-          rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
+          rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
             /tmp/version.txt "dl:${OSS_BUCKET}/${PREFIX}version.txt"
           status="$(curl -sS -o /tmp/marker -w '%{http_code}' --retry 5 --retry-delay 3 \
             "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com/${PREFIX}version.txt")" || status=000

@@ -402,7 +402,7 @@ jobs:
           for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
-            rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
+            rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
               "$f" "$staging/$(basename "$f")"
           done
           rclone lsf --s3-no-check-bucket "$staging" | sort
@@ -451,12 +451,16 @@ jobs:
               install/install.sh install/install.ps1
           }
           promote_from_staging() {
-            # No `--header-upload` here: this is a server-side copy, and upload headers do not
-            # apply to it. The header is asserted afterwards, object by object.
+            # **From the local artifact, not a server-side copy of the staging object.** A copy
+            # carries no upload headers, so neither `Cache-Control` nor the object ACL would be
+            # set — and through the S3-compatible API a new object defaults to private, which
+            # makes every published URL answer 403 (2026-11-18, cli/v1.6.0).
             while IFS= read -r f; do
               name="$(basename "$f")"
-              rclone copyto --s3-no-check-bucket --retries 3 \
-                "$staging/$name" "dl:${OSS_BUCKET}/$name"
+              rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
+                --header-upload "Cache-Control: no-cache" \
+                --header-upload "x-oss-object-acl: public-read" \
+                "$f" "dl:${OSS_BUCKET}/$name"
             done < <(objects)
           }
           # Prints "<http status> <Cache-Control value>". The status travels with the value because
@@ -500,7 +504,7 @@ jobs:
             echo "${#lost[@]} object(s) lost Cache-Control in the copy; re-uploading them from the checkout"
             for f in "${lost[@]}"; do
               rclone copyto --s3-no-check-bucket --retries 3 --ignore-times \
-                --header-upload "Cache-Control: no-cache" \
+                --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
                 "$f" "dl:${OSS_BUCKET}/$(basename "$f")"
             done
             for f in "${lost[@]}"; do
@@ -515,7 +519,7 @@ jobs:
           echo "Cache-Control: no-cache is on all thirteen live objects"
 
           printf '%s\n' "$VERSION" > /tmp/version.txt
-          rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" \
+          rclone copyto --s3-no-check-bucket --retries 3 --header-upload "Cache-Control: no-cache" --header-upload "x-oss-object-acl: public-read" \
             /tmp/version.txt "dl:${OSS_BUCKET}/version.txt"
 
           # **Ask the marker, do not assume the write worked.** Everything above is already live;

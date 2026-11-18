@@ -90,7 +90,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 | 项 | 值 |
 |---|---|
 | 地址 | `https://dl.skillmasterai.com/`（安装脚本与自更新都指向它） |
-| 存储 | 阿里云 OSS bucket `skillmaster-dl`（华东1，**公共读、不开放写**） |
+| 存储 | 阿里云 OSS bucket `skillmaster-dl`（华东1，**公共读、不开放写**）。**每个对象上传时显式带 `x-oss-object-acl: public-read`**：走 S3 兼容接口时新对象默认私有，不写这条会让所有下载地址回 403（2026-11-18，`cli/v1.6.0` 首次发布时踩到） |
 | 接入 | `dl.skillmasterai.com` 是 ECS 上 nginx 反代到同一个桶；用户与 agent 都走它。桶的直连地址继续可用，作备用通道（[部署说明](../deploy/README.md)） |
 | 证书 | ECS 上的 certbot，**DNS-01**：`dl.` 的 TXT 记录由 `/etc/skillmaster/acme/auth.sh` 写入 Aliyun DNS，续期由 `certbot.timer` 自动完成 |
 | `Cache-Control` | **`no-cache`**——键名不带版本号，一缓存就会有人下到上一版；宁可每次回源 |
@@ -104,6 +104,8 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 **上传顺序**：先六个平台包与一个技能包（`skillmaster.tgz`）→ 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
 
 **先暂存，再动线上的键。** 键名不带版本号，一次传到一半就会留下「一版的包 + 另一版的校验和」，那三平台上的安装全部失败。所以先传进 `releases/<版号>/`，在那里逐个核对，再逐个搬到正式键上。S3 没有多对象提交，窗口只能缩短、不能关闭——窗口很短，安装脚本本身会失败退出，重跑同一个 tag 能补齐（见上一条的例外）。
+
+**从本地产物上传，不用服务端复制。** 复制不会带上传头，`Cache-Control` 与对象 ACL 都会丢。
 
 **暂存的前缀是公开的、不会自动清理的。** `releases/<版号>/` 在同一个公共读 bucket 里，所以整份也
 可以按地址取到（`https://dl.skillmasterai.com/releases/<版号>/…`）。它同时是**手工恢复**时唯一
