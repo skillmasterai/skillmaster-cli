@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -73,5 +75,35 @@ func TestSandboxConfigOffersExcludedCommandsOnlyToClaude(t *testing.T) {
 		if got := strings.Contains(joined(sandboxConfigLines(tc.client, "/s", "/c")), "excludedCommands"); got != tc.want {
 			t.Errorf("%s: excludedCommands present = %v, want %v", tc.client, got, tc.want)
 		}
+	}
+}
+
+// dirOnPath is what the last doctor line reports, and the reason it exists is Windows: the entry
+// there is written into the registry while a running host keeps the environment it started with.
+func TestDirOnPath(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	for _, tc := range []struct {
+		name string
+		dir  string
+		path string
+		want bool
+	}{
+		{"exact", "/opt/bin", "/usr/bin" + sep + "/opt/bin", true},
+		{"absent", "/opt/bin", "/usr/bin" + sep + "/usr/local/bin", false},
+		{"trailing slash on the entry", "/opt/bin", "/usr/bin" + sep + "/opt/bin/", true},
+		{"empty entries are skipped", "/opt/bin", sep + sep + "/usr/bin", false},
+		{"empty path", "/opt/bin", "", false},
+	} {
+		if got := dirOnPath(tc.dir, tc.path); got != tc.want {
+			t.Errorf("%s: dirOnPath(%q, %q) = %v, want %v", tc.name, tc.dir, tc.path, got, tc.want)
+		}
+	}
+	// Windows compares case-insensitively; the separator list is what makes this runnable on the
+	// machine the case matters on, so the expectation follows the host, not a guess.
+	// The two strings differ only in case, so only a Windows comparison can match them.
+	upper, lower := "/OPT/BIN", "/opt/bin"
+	want := runtime.GOOS == "windows"
+	if got := dirOnPath(upper, lower); got != want {
+		t.Errorf("case folding on %s: dirOnPath(%q, %q) = %v, want %v", runtime.GOOS, upper, lower, got, want)
 	}
 }

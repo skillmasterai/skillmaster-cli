@@ -130,6 +130,22 @@ func doctorCmd(ctx context.Context, args []string) error {
 		report("沙箱", "ok", "客户端没有自报")
 	}
 
+	// 7. The command itself: whether `skmr` can be typed as a bare word here.
+	//
+	// **This is the line that answers "装好了，可新会话里说找不到".** Windows records the new
+	// directory in the user PATH, but a process keeps the environment it started with: a session
+	// inherits from its parent, not from the registry, so an agent host that was already running
+	// when the install finished hands every session it spawns the old PATH. Reporting whether
+	// *this* process can find the command says which of the two states the reader is in.
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		if dirOnPath(dir, os.Getenv("PATH")) {
+			report("命令", "ok", "PATH 里有 "+dir)
+		} else {
+			report("命令", "注意", dir+" 不在 PATH 里：当前会话用完整路径，新会话要重开终端或重启所在的应用")
+		}
+	}
+
 	if env.Sandboxed || config.DirNote() != "" || len(problems) > 0 {
 		printSandboxConfig(env.Client, stateDir, cacheRoot)
 	}
@@ -539,6 +555,28 @@ func writableDir(dir string) error {
 		return err
 	}
 	return probe.Close()
+}
+
+// dirOnPath answers "can a bare command name in dir be found from this PATH". Windows paths are
+// case-insensitive; a POSIX one is not, so folding is applied only where the filesystem does it.
+func dirOnPath(dir, path string) bool {
+	want := filepath.Clean(dir)
+	for _, entry := range filepath.SplitList(path) {
+		if entry == "" {
+			continue
+		}
+		got := filepath.Clean(entry)
+		if runtime.GOOS == "windows" {
+			if strings.EqualFold(got, want) {
+				return true
+			}
+			continue
+		}
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 func isDir(path string) bool {
