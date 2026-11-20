@@ -6,7 +6,7 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
-// commandHelp is the whole command table: 99 command paths, nine pure groups, the top level, and
+// commandHelp is the whole command table: 100 command paths, nine pure groups, the top level, and
 // four topics. The declarations live here, next to the handlers, because the help and the command have one
 // home (v16 做 #7). One declaration per command; the command-tree test proves the set matches the
 // dispatch.
@@ -126,7 +126,7 @@ var topSpecs = []*help.Spec{
 	{
 		Path:      "",
 		Summary:   "SkillMaster 命令行",
-		Children:  []string{"skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "auth", "login", "logout", "startup", "prompt", "update", "run", "doctor"},
+		Children:  []string{"skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "auth", "login", "logout", "startup", "prompt", "update", "run", "doctor", "settings"},
 		PureGroup: true,
 	},
 	{
@@ -152,6 +152,27 @@ var topSpecs = []*help.Spec{
 		Summary:   "这份凭据的状态",
 		Children:  []string{"status"},
 		PureGroup: true,
+	},
+	{
+		Path:    "settings",
+		Summary: "账号的搜索偏好",
+		Usage:   "skmr settings [--public-recall on|off] [--json]",
+		Flags: []help.Flag{
+			{Name: "--public-recall", Value: "on|off", Summary: "库内结果不足时是否提示公开库"},
+		},
+		Output: "不带参数时打印「库内结果不足时提示公开库：开启 / 关闭」。带 --public-recall 时写这个账户的设置，" +
+			"并打印写入后的值；控制台「通用」页的开关改的是同一个设置。",
+		JSONFields: []string{"public_recall_hint"},
+		Failures: []help.Failure{
+			{Code: "usage", Summary: "--public-recall 只接受 on 或 off", Next: "改成 on 或 off 后重试"},
+			{Code: "unauthenticated", Summary: help.UnauthenticatedSummary, Next: help.UnauthenticatedNext},
+			{Code: "insufficient_permission", Summary: "读要 skills:read，写要 skills:write",
+				Next: "换一把两档都有的密钥，或去控制台「通用」改"},
+		},
+		Examples: []string{"skmr settings", "skmr settings --public-recall off"},
+		Parent:   "",
+		Next:     "skmr skills search \"<问题>\"",
+		Exits:    exitsWithCredential,
 	},
 	{
 		Path:    "login",
