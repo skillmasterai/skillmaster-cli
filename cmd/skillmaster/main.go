@@ -134,6 +134,8 @@ func run(ctx context.Context, args []string) (err error) {
 		return versionErr(jsonMode, err, "")
 	case "doctor":
 		return doctorCmd(ctx, args[1:])
+	case "settings":
+		return settingsVerb(ctx, args[1:])
 	case "skill":
 		return skillVerb(ctx, args[1:])
 	case "version":

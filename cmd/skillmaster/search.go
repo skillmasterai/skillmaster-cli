@@ -30,10 +30,18 @@ func search(ctx context.Context, args []string) error {
 		if err != nil {
 			return listed{}, err
 		}
-		return listed{cards: page.Skills, more: page.NextCursor != "", note: page.Note}, nil
+		return listed{cards: page.Skills, more: page.NextCursor != "", note: page.Note,
+			publicMatches: page.PublicMatches, publicMatchesCapped: page.PublicMatchesCapped}, nil
 	})
 	if err != nil {
 		return v14Error(err)
+	}
+	// v87: the pre-check's line goes first, before every other hint — same reason as the
+	// rephrase hint below: this output is cut from the tail, and advice at the bottom is invisible.
+	publicHinted := found.publicMatches != nil && *found.publicMatches > 0
+	if publicHinted {
+		fmt.Println(publicRecallHint(len(found.cards), *found.publicMatches,
+			found.publicMatchesCapped))
 	}
 	// **The hint goes first, not last** (v30). It is about the next search, and both ways this output
 	// is cut keep the head and drop the tail: Claude Code inlines only the first ~30,000 characters
@@ -46,10 +54,15 @@ func search(ctx context.Context, args []string) error {
 		fmt.Printf("（--limit 最多 %d 条，这次按 %d 条取。）\n", searchPageLimit, searchPageLimit)
 	}
 	if len(found.cards) == 0 {
-		if found.note != "" {
-			fmt.Println(found.note)
-		} else if len(options.excludes) == 0 {
-			fmt.Println("没有匹配的 skill。")
+		// **The hint already said 「你的库没有匹配」** (v87). The server's default sentence under
+		// it — 「没有足够相关的 skill。」 — reads as "nothing anywhere", which is exactly what the
+		// hint is correcting, so it is not repeated.
+		if !publicHinted {
+			if found.note != "" {
+				fmt.Println(found.note)
+			} else if len(options.excludes) == 0 {
+				fmt.Println("没有匹配的 skill。")
+			}
 		}
 		if len(options.excludes) > 0 {
 			// **Said whenever `--exclude` was in play, even when the server has its own sentence.**
@@ -379,6 +392,27 @@ type listed struct {
 	cards []api.Card
 	more  bool
 	note  string
+	// v87: what the server's public pre-check counted, and whether that count stopped at its cap.
+	// A pointer because zero is an answer ("nothing public to add") and "did not run" is not.
+	publicMatches       *int
+	publicMatchesCapped bool
+}
+
+// publicRecallHint is v87's one line: the library answer was thin, and the public library has more.
+//
+// **It names the command that widens the search** rather than repeating the query: the caller
+// already has the words, and `--scope all` keeps the library rows above the public ones (ADR 0180).
+// A capped count says 「以上」 — a number that stopped counting is not the total.
+func publicRecallHint(found, public int, capped bool) string {
+	more := fmt.Sprintf("%d 条", public)
+	if capped {
+		more = fmt.Sprintf("%d 条以上", public)
+	}
+	if found == 0 {
+		return fmt.Sprintf("（你的库没有匹配；公开库还有 %s。要更多就加 --scope all 再搜一次。）", more)
+	}
+	return fmt.Sprintf("（你的库只匹配到 %d 条；公开库还有 %s。要更多就加 --scope all 再搜一次。）",
+		found, more)
 }
 
 // collect reads every page.

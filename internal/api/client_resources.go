@@ -392,6 +392,12 @@ type SearchPage struct {
 	// back to keyword" (v19). Empty on an ordinary answer; when it is set the command prints it, so
 	// a keyword result is never mistaken for a semantic one.
 	Note string `json:"note"`
+	// PublicMatches is the v87 pre-check: public skills that clear the same threshold and are not
+	// already in the caller's library. Null when the pre-check did not run; a pointer because zero
+	// is a real answer ("nothing public to add") and "did not run" is a different fact.
+	PublicMatches *int `json:"public_matches"`
+	// PublicMatchesCapped says the count stopped at the server's cap, so the number is a floor.
+	PublicMatchesCapped bool `json:"public_matches_capped"`
 }
 
 type Card struct {
