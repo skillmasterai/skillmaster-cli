@@ -158,9 +158,9 @@ var topSpecs = []*help.Spec{
 		Summary: "账号的搜索偏好",
 		Usage:   "skmr settings [--public-recall on|off] [--json]",
 		Flags: []help.Flag{
-			{Name: "--public-recall", Value: "on|off", Summary: "库内结果不足时是否提示公开库"},
+			{Name: "--public-recall", Value: "on|off", Summary: "库内结果不足时是否列出公开库的匹配"},
 		},
-		Output: "不带参数时打印「库内结果不足时提示公开库：开启 / 关闭」。带 --public-recall 时写这个账户的设置，" +
+		Output: "不带参数时打印「库内结果不足时列出公开库的匹配：开启 / 关闭」。带 --public-recall 时写这个账户的设置，" +
 			"并打印写入后的值；控制台「通用」页的开关改的是同一个设置。",
 		JSONFields: []string{"public_recall_hint"},
 		Failures: []help.Failure{

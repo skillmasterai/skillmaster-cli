@@ -43,7 +43,7 @@ var otherSpecs = []*help.Spec{
 			{Name: "--no-login", Summary: "没有凭据时立即失败"},
 		},
 		Args:   []help.Arg{{Name: "[<问题>]", Key: "query"}},
-		Output: "每条是地址一行 + 描述 2–3 行，再跟一行「属性：短名」（最多三枚，其余收成 +N），走 stdout；不打印相似度。库内结果两条及以下、公开库还有匹配时，最前一行先说公开库还有多少条（教加 --scope all 再搜；可在控制台「通用」或 skmr settings 关掉）。有结果且没带 --exclude 时，再给一句提示（教换说法重查时带上已给过的地址）；带了 --exclude 且结果为空时，另补一句「也可能是 --exclude 排掉的」并给出下一步。没有 --json。",
+		Output: "每条是地址一行 + 描述 2–3 行，再跟一行「属性：短名」（最多三枚，其余 +N），走 stdout，不打印分数。库内结果两条及以下、公开库有匹配时（无筛选、未带 --exclude、limit>2），首行先说公开库还有多少条，结果后另起一块列出最接近几条，空库并入首行（可用 skmr settings 关）。有结果且未排除时，给一句提示（教重查带上地址）；带了 --exclude 且结果为空时，另补一句「也可能是 --exclude 排掉的」并给下一步。没有 --json。",
 		Failures: []help.Failure{
 			{Code: "usage", Summary: "关键词、分类与标签一个都没给", Next: "给一句问题，或加分类/标签"},
 			{Code: "invalid_request", Summary: "属性的词不在词表里", Next: "用 skmr skills labels 查可筛的键"},

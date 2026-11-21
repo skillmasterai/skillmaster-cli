@@ -64,7 +64,7 @@ func settingsVerb(ctx context.Context, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Printf("库内结果不足时提示公开库：%s\n", enabledWord(found.PublicRecallHint))
+	fmt.Printf("库内结果不足时列出公开库的匹配：%s\n", enabledWord(found.PublicRecallHint))
 	return nil
 }
 
