@@ -891,13 +891,15 @@ func TestCategoryClearAndItsNoOp(t *testing.T) {
 // #44 skill join / leave
 // ---------------------------------------------------------------------------
 
-func TestJoinAndLeaveRefuseWithoutYesAndSendNothing(t *testing.T) {
+func TestJoinAndLeaveRefuseWithoutYesAndWriteNothing(t *testing.T) {
 	for _, test := range []struct {
 		verb        string
 		consequence string
+		// reads: leave asks for the relation (a read, not a write); join has nothing to read.
+		reads int
 	}{
-		{verb: "join", consequence: "不复制内容"},
-		{verb: "leave", consequence: "我的标签与我的适用场景会保留"},
+		{verb: "join", consequence: "不复制内容", reads: 0},
+		{verb: "leave", consequence: "我的标签与我的适用场景会保留", reads: 1},
 	} {
 		t.Run(test.verb, func(t *testing.T) {
 			fake := newFakeServer(t, func(recordedRequest) (int, string) {
@@ -917,8 +919,13 @@ func TestJoinAndLeaveRefuseWithoutYesAndSendNothing(t *testing.T) {
 			if !strings.Contains(stderr, "--yes") {
 				t.Errorf("the refusal does not name --yes:\n%s", stderr)
 			}
-			if len(fake.requests) != 0 {
+			if len(fake.requests) != test.reads {
 				t.Errorf("a refused write sent %d requests", len(fake.requests))
+			}
+			for _, request := range fake.requests {
+				if request.Method != http.MethodGet {
+					t.Errorf("a refused write sent %s %s", request.Method, request.Path)
+				}
 			}
 		})
 	}
@@ -975,7 +982,7 @@ func TestJoinAndLeaveRefusalsAreNamedByCode(t *testing.T) {
 		{name: "下线中给出可执行的复制命令", verb: "join", status: http.StatusConflict, code: "skill_offline_pending",
 			details: `[{"field":"pending_until","issue":"2026-12-11T00:00:00Z"}]`,
 			want:    "skmr skill copy dev/pdf-tools --name"},
-		{name: "没有引用", verb: "leave", status: http.StatusConflict, code: "library_reference_missing", want: "没有可移除的加入引用"},
+		{name: "没有引用", verb: "leave", status: http.StatusConflict, code: "library_reference_missing", want: "不在你的库里"},
 		{name: "看不见", verb: "join", status: http.StatusNotFound, code: "skill_not_found", want: "找不到这个 skill"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

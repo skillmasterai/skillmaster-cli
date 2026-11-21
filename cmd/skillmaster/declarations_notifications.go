@@ -67,7 +67,7 @@ var notificationSpecs = []*help.Spec{
 			{Code: "insufficient_permission", Summary: "接受要可写密钥（skills:write）", Next: "换一把可写密钥；只读密钥不能接受邀请"},
 			{Code: "invalid_notification_state", Summary: "邀请已过期或已处理", Next: "看 skmr notifications list"},
 			{Code: "notification_not_found", Summary: "没有这条通知，或不是你的", Next: "用 skmr notifications list 核对 id"},
-			{Code: "skill_quota_exceeded", Summary: "库里的 skill 到上限了", Next: "移出「我加入的」；共享给我的要分享方撤销"},
+			{Code: "skill_quota_exceeded", Summary: "库里的 skill 到上限了", Next: "先移出库里的条目，共享给我的也能自己移出"},
 		},
 		Examples: []string{"skmr notifications accept 01J..."},
 		Parent:   "notifications", Next: "接着用 skmr skill invoke <地址>", Exits: exitsWithCredential,

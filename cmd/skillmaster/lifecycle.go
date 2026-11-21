@@ -331,10 +331,16 @@ func openSkill(ctx context.Context, args []string) error {
 func joinLibrary(ctx context.Context, args []string, join bool) error {
 	address := ""
 	yes := false
+	joinOnly := false
 	for _, arg := range args {
 		switch arg {
 		case "--yes":
 			yes = true
+		case "--join-only":
+			if join {
+				return unknownFlag(joinLeavePath(join), arg)
+			}
+			joinOnly = true
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return unknownFlag(joinLeavePath(join), arg)
@@ -357,14 +363,22 @@ func joinLibrary(ctx context.Context, args []string, join bool) error {
 		verb, action = "leave", "移出库"
 	}
 	command := fmt.Sprintf("skmr skill %s %s --yes", verb, address)
+	if joinOnly {
+		command += " --join-only"
+	}
 	if !yes {
-		// **Nothing is sent.** The consequence is on stdout (it is the answer to "what would this
-		// do"), and the refusal is what makes the exit non-zero.
+		// **No write is sent.** The consequence is on stdout (it is the answer to "what would this
+		// do"), and the refusal is what makes the exit non-zero. Leave reads the caller's relation
+		// first — a read is not an execution — so the sentence names the real consequence (v89,
+		// ADR 0231); joining has only one consequence and sends nothing.
 		if join {
 			fmt.Println("加入是引用：不复制内容、不产生版本、不改变访问权；作者发新版，库里跟新版。")
+		} else if joinOnly {
+			// **The narrow undo never ends a share**, so it must not borrow the exit's sentence:
+			// a shared entry's whole-exit consequence would be a promise this flag does not keep.
+			fmt.Println(leaveJoinOnly)
 		} else {
-			fmt.Println("移除只删「我加入的」这条引用；我的标签与我的适用场景会保留，重新加入后回来。" +
-				"它仍在公域，仍可直接调用。")
+			fmt.Println(leaveConsequence(ctx, address))
 		}
 		fmt.Printf("确认后执行：\n%s\n", command)
 		return fmt.Errorf("没有执行：%s要加 --yes。", action)
@@ -374,7 +388,7 @@ func joinLibrary(ctx context.Context, args []string, join bool) error {
 		if join {
 			return client.JoinLibrary(ctx, address)
 		}
-		return client.LeaveLibrary(ctx, address)
+		return client.LeaveLibrary(ctx, address, joinOnly)
 	})
 	if err != nil {
 		// **The migration command names the skill.** The shared server sentence cannot — it does
@@ -405,8 +419,80 @@ func joinLibrary(ctx context.Context, args []string, join bool) error {
 		fmt.Printf("已把 %s 收进你的库。\n", address)
 		return nil
 	}
+	if joinOnly {
+		// The share, if any, is still there — the entry did not necessarily leave the library.
+		fmt.Printf("已撤销你在 %s 上的加入引用。\n", address)
+		return nil
+	}
 	fmt.Printf("已把 %s 移出你的库。\n", address)
 	return nil
+}
+
+// The sentences a leave can print before asking for --yes. **The source is read, not
+// guessed**: a shared entry and a joined one end differently (ADR 0231), and this sentence is what
+// a person reads before an irreversible action. The fallback covers both when the read cannot
+// answer (no credential, a dormant entry).
+const (
+	/* **Only durable facts.** Whether the skill can be called or rejoined right now is not this
+	   sentence's to promise: an offline skill, or one inside its 30-day ramp, refuses joins and
+	   answers 503. "Still in the public library" is a property the action does not change. */
+	leaveJoined = "移出的是「我加入的」这条引用。我的标签与我的适用场景会保留；它仍在公开库。"
+	// The discovery page's undo: only the join it made goes; a share that arrived since stays.
+	leaveJoinOnly = "撤销只删「我加入的」这条引用，不结束任何共享；如果期间收到过共享，" +
+		"条目和那段共享都会保留。我的标签与我的适用场景会保留。"
+	leaveShared = "移出会结束这段共享，你会失去对它的访问权；要回来，需要分享方重新邀请你。" +
+		"我的标签与我的适用场景会保留。"
+	// A public skill's share only takes away the rung it gave: the public rung stays.
+	leaveSharedPublic = "移出会结束这段共享，你会失去对方给你的权限；它仍是公开的。" +
+		"我的标签与我的适用场景会保留。"
+	leaveCreated      = "这个 skill 是你创建的，不能移出库；要让它不再出现，请在控制台里删除它。"
+	leaveNotInLibrary = "这个 skill 不在你的库里，没有可移出的内容。"
+	// An offline skill (or one that stopped being public) still resolves, but there is nothing to
+	// consume right now; "still callable" would be false, so the sentence names the dormancy.
+	leaveDormant = "这条库条目现在不生效（skill 已下线或暂时不可见）。移出会删掉你这一条；" +
+		"如果它是别人共享给你的，这段共享也一起结束。我的标签与我的适用场景会保留。"
+	leaveUnknown = "移出会删掉「我加入的」这条引用；如果它是别人共享给你的，这段共享会结束——" +
+		"私有的你会失去访问权，公开的公开档仍在。我的标签与我的适用场景会保留。"
+)
+
+// leaveConsequence reads the caller's relation so the confirmation names the truth. It never
+// starts a login (the `--no-login` mode): a question that only prints a sentence must not open a
+// browser. Any failure falls back to the sentence that covers both sources.
+func leaveConsequence(ctx context.Context, address string) string {
+	library, err := authenticatedWith(ctx, true,
+		func(client api.Client) (api.LibraryView, error) {
+			tags, err := client.Tags(ctx, address)
+			if err != nil {
+				return api.LibraryView{}, err
+			}
+			return tags.Library, nil
+		})
+	if err != nil {
+		return leaveUnknown
+	}
+	switch library.Source {
+	case "joined":
+		if !library.Active {
+			return leaveDormant
+		}
+		return leaveJoined
+	case "shared":
+		// Dormant first: the rung is still a fact, but the skill cannot be called right now.
+		if !library.Active {
+			return leaveDormant
+		}
+		// A public shared skill keeps the public rung, so it is not an access loss.
+		if library.PublicRung != nil {
+			return leaveSharedPublic
+		}
+		return leaveShared
+	case "created":
+		return leaveCreated
+	case "":
+		return leaveNotInLibrary
+	default:
+		return leaveUnknown
+	}
 }
 
 // restoreSkill brings a soft-deleted skill back. **No `--yes`**: the action is reversible in the

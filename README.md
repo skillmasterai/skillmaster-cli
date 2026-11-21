@@ -92,7 +92,9 @@ here**: it takes every attachment, including the sleeping ones, so it stays behi
 dialog. The seven read commands that can answer without a credential take `--no-login`, which fails
 with the next step instead of opening a browser (`skills pending`, v18, cannot: it reads the author
 plane's queue and always needs one); every new command refuses `--json`. `skill join` and `skill leave` print the consequence
-and the full command unless `--yes` is given, and send nothing.
+and the full command unless `--yes` is given, and send no write. A full `skill leave` preview does read the
+caller's relation first (a GET), so its sentence names the real consequence (v89); `--join-only`
+does not read it — the narrow undo has one sentence for every entry.
 
 **v10 closed the lifecycle** (create: [ADR 0070](../docs/decisions/0070-creating-a-skill-creates-its-first-draft.md); requests: [ADR 0073](../docs/decisions/0073-asking-for-access-splits-by-plane.md); handover: [ADR 0072](../docs/decisions/0072-the-handoff-points-at-the-page-that-owns-the-action.md)): `skill create <name> --description <text> [--name <version>]`
 starts a skill and its first draft without a local directory; any write command accepts `@new` as its
