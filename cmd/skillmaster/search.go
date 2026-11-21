@@ -31,7 +31,8 @@ func search(ctx context.Context, args []string) error {
 			return listed{}, err
 		}
 		return listed{cards: page.Skills, more: page.NextCursor != "", note: page.Note,
-			publicMatches: page.PublicMatches, publicMatchesCapped: page.PublicMatchesCapped}, nil
+			publicMatches: page.PublicMatches, publicMatchesCapped: page.PublicMatchesCapped,
+			publicCandidates: page.PublicCandidates}, nil
 	})
 	if err != nil {
 		return v14Error(err)
@@ -41,7 +42,7 @@ func search(ctx context.Context, args []string) error {
 	publicHinted := found.publicMatches != nil && *found.publicMatches > 0
 	if publicHinted {
 		fmt.Println(publicRecallHint(len(found.cards), *found.publicMatches,
-			found.publicMatchesCapped))
+			found.publicMatchesCapped, len(found.publicCandidates)))
 	}
 	// **The hint goes first, not last** (v30). It is about the next search, and both ways this output
 	// is cut keep the head and drop the tail: Claude Code inlines only the first ~30,000 characters
@@ -63,6 +64,12 @@ func search(ctx context.Context, args []string) error {
 			} else if len(options.excludes) == 0 {
 				fmt.Println("没有匹配的 skill。")
 			}
+		}
+		// v88: the empty answer's only content is the public fill. It goes here, before the
+		// advice lines. **No separator of its own**: the first line already said 「以下 N 条来自
+		// 公开库」, and printing the sentence twice would read as two blocks.
+		if publicHinted && len(found.publicCandidates) > 0 {
+			printCards(found.publicCandidates, true, true, options.verbose)
 		}
 		if len(options.excludes) > 0 {
 			// **Said whenever `--exclude` was in play, even when the server has its own sentence.**
@@ -89,6 +96,12 @@ func search(ctx context.Context, args []string) error {
 		fmt.Println(found.note)
 	}
 	printCards(found.cards, true, true, options.verbose)
+	// Candidates are printed only beside the count that introduced them. A response with the
+	// field but no `public_matches` is not one this CLI or this server produces; ignoring it is
+	// safer than printing a block of addresses that look like library results.
+	if publicHinted {
+		printPublicCandidates(found.publicCandidates, options.verbose)
+	}
 	if found.more {
 		// Said rather than silently dropped: a listing that stops without saying so reads as
 		// "that is everything", which is a claim the CLI would be making on the server's behalf.
@@ -396,23 +409,53 @@ type listed struct {
 	// A pointer because zero is an answer ("nothing public to add") and "did not run" is not.
 	publicMatches       *int
 	publicMatchesCapped bool
+	// v88: the public skills themselves, best first. Empty on a v87 server or when the pre-check
+	// found nothing — in both cases the v87 line is the whole hint.
+	publicCandidates []api.Card
 }
 
-// publicRecallHint is v87's one line: the library answer was thin, and the public library has more.
+// publicRecallHint is the thin answer's first line (v87; v88 adds the fill).
 //
-// **It names the command that widens the search** rather than repeating the query: the caller
-// already has the words, and `--scope all` keeps the library rows above the public ones (ADR 0180).
-// A capped count says 「以上」 — a number that stopped counting is not the total.
-func publicRecallHint(found, public int, capped bool) string {
+// **When the server sent candidates, it does not name `--scope all`**: the next step is already on
+// screen, and advice beside a list of answers reads as if the list did not count. On a v87 server,
+// or when no cards came back, the advice stays — a second search is then the only way to see them,
+// and `--scope all` keeps the library rows above the public ones (ADR 0180). A capped count says
+// 「以上」 — a number that stopped counting is not the total.
+func publicRecallHint(found, public int, capped bool, candidates int) string {
 	more := fmt.Sprintf("%d 条", public)
 	if capped {
 		more = fmt.Sprintf("%d 条以上", public)
+	}
+	if candidates > 0 && found == 0 {
+		// v88: the separator sentence joins the first line, because there are no library rows
+		// between them to separate it from.
+		return fmt.Sprintf("（你的库没有匹配；公开库还有 %s，以下 %d 条来自公开库，补齐这次搜索。）",
+			more, candidates)
+	}
+	if candidates > 0 {
+		// The next step is already on screen: naming `--scope all` here would read as if the
+		// rows under this line were not the answer.
+		return fmt.Sprintf("（你的库只匹配到 %d 条；公开库还有 %s。）", found, more)
 	}
 	if found == 0 {
 		return fmt.Sprintf("（你的库没有匹配；公开库还有 %s。要更多就加 --scope all 再搜一次。）", more)
 	}
 	return fmt.Sprintf("（你的库只匹配到 %d 条；公开库还有 %s。要更多就加 --scope all 再搜一次。）",
 		found, more)
+}
+
+// printPublicCandidates is v88's second block: the public skills the server sent back, best first.
+//
+// **No marker on the rows.** The sentence above them says where they come from, and an address
+// line has to stay copyable whole — a `[公开库]` prefix would make a later command take the marker
+// with it. The cards are the same shape as library results, so the caller compares them the way it
+// already compares candidates.
+func printPublicCandidates(cards []api.Card, verbose bool) {
+	if len(cards) == 0 {
+		return
+	}
+	fmt.Printf("（以下 %d 条来自公开库，补齐这次搜索。）\n", len(cards))
+	printCards(cards, true, true, verbose)
 }
 
 // collect reads every page.

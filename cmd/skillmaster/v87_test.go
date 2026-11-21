@@ -75,7 +75,7 @@ func TestSettingsShowsTheStoredPreference(t *testing.T) {
 	})
 
 	out := mustRun(t, "settings")
-	if !strings.Contains(out, "库内结果不足时提示公开库：开启") {
+	if !strings.Contains(out, "库内结果不足时列出公开库的匹配：开启") {
 		t.Fatalf("output = %q", out)
 	}
 	if len(wantsRequests(t, fake, http.MethodGet, "/api/v1/me/settings")) != 1 {
@@ -89,7 +89,7 @@ func TestSettingsWritesThePreference(t *testing.T) {
 	})
 
 	out := mustRun(t, "settings", "--public-recall", "off")
-	if !strings.Contains(out, "库内结果不足时提示公开库：关闭") {
+	if !strings.Contains(out, "库内结果不足时列出公开库的匹配：关闭") {
 		t.Fatalf("output = %q", out)
 	}
 	puts := wantsRequests(t, fake, http.MethodPut, "/api/v1/me/settings")

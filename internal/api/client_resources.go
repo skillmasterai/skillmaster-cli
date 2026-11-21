@@ -398,6 +398,10 @@ type SearchPage struct {
 	PublicMatches *int `json:"public_matches"`
 	// PublicMatchesCapped says the count stopped at the server's cap, so the number is a floor.
 	PublicMatchesCapped bool `json:"public_matches_capped"`
+	// PublicCandidates is the v88 fill: the closest public skills themselves, best first, so the
+	// caller does not have to search again. Absent on a v87 server — that is why the fields are
+	// read independently rather than as a pair.
+	PublicCandidates []Card `json:"public_candidates"`
 }
 
 type Card struct {
