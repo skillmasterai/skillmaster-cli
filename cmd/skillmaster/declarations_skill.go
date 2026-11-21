@@ -589,9 +589,9 @@ var skillSpecs = []*help.Spec{
 			{Name: "--join-only", Summary: "只撤销我加入的那条引用，不结束共享"},
 		},
 		Args:   []help.Arg{{Name: "<命名空间>/<名字>", Key: "address", Required: true}},
-		Output: "报告已移出；共享条目会结束那段共享（`--join-only` 例外：只撤销加入引用，不结束共享）。我的标签与我的适用场景保留。",
+		Output: "报告已移出；共享条目会结束那段共享（--join-only 例外：只撤销加入引用，不结束共享）。我的标签与我的适用场景保留。",
 		Failures: []help.Failure{
-			{Code: "library_reference_missing", Summary: "它不在你的库里，没有可移出的内容", Next: "用 skmr skills list 核对"},
+			{Code: "library_reference_missing", Summary: "不在你的库里，或没有可撤销的加入引用", Next: "用 skmr skills list 核对"},
 		},
 		Examples: []string{"skmr skill leave dev/pdf-tools --yes"},
 		Parent:   "skill", Exits: exitsWithCredential,

@@ -407,6 +407,14 @@ func joinLibrary(ctx context.Context, args []string, join bool) error {
 			return fmt.Errorf("这个 skill 正在下线中，不能再入库。"+
 				"要保留它，复制到自己的库：%s。", copyCommand)
 		}
+		// **The narrow undo has one refusal the generic sentence gets wrong.** A shared entry is
+		// in the library — it just has no join reference to take back; saying "not in your library"
+		// would send a reader (or an agent) looking for the wrong fix. The same code also covers an
+		// address the caller never joined, so the sentence does not presume a share.
+		if joinOnly && server != nil && server.Code == "library_reference_missing" {
+			return fmt.Errorf("这条没有可撤销的加入引用。如果它是分享给你的，移出库会结束共享："+
+				"skmr skill leave %s --yes；否则用 skmr skills list 核对。", address)
+		}
 		return v14Error(err)
 	}
 	if join {

@@ -133,3 +133,25 @@ func TestJoinRefusesJoinOnly(t *testing.T) {
 		t.Error("join accepted --join-only")
 	}
 }
+
+// The narrow undo's refusal is its own sentence: the entry is in the library, it just has no join
+// reference to take back (v89). The generic sentence ("not in your library") would send a reader —
+// or an agent — looking for the wrong fix.
+func TestJoinOnlyRefusalNamesTheNarrowUndo(t *testing.T) {
+	newFakeServer(t, func(recordedRequest) (int, string) {
+		return http.StatusConflict, `{"error":{"code":"library_reference_missing","message":"refused"}}`
+	})
+	stdout, stderr, status := runCaptured(t, "skill", "leave", "dev/pdf-tools", "--yes", "--join-only")
+	if status == 0 || stdout != "" {
+		t.Fatalf("status=%d stdout=%q", status, stdout)
+	}
+	for _, want := range []string{"没有可撤销的加入引用",
+		"skmr skill leave dev/pdf-tools --yes", "skmr skills list 核对"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr = %q, want %q", stderr, want)
+		}
+	}
+	if strings.Contains(stderr, "不在你的库里") {
+		t.Errorf("the generic sentence would misname the case: %q", stderr)
+	}
+}
