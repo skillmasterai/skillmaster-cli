@@ -825,8 +825,8 @@ func v14Error(err error) error {
 		return errors.New("这个 skill 现在加入不了：它可能已经在你的库里（你创建的或共享给你的），" +
 			"也可能已下线、或还没有可用的版本。看它现在是什么：skmr skills list --verbose。")
 	case api.CodeLibraryReferenceMissing:
-		return errors.New("这个 skill 没有可移除的加入引用。" +
-			"只有「我加入的」那条引用能移；共享来源但引用仍在时也可以移，你创建的则不在其列。")
+		return errors.New("这个 skill 不在你的库里，没有可移出的内容。" +
+			"「共享给我的」和「我加入的」都能移出；你创建的不能。")
 	case api.CodeLibraryEntryDormant:
 		return errors.New("这个 skill 的库条目现在不生效（可能已下线或暂时不可见），" +
 			"暂时读写不了它的我的标签与我的适用场景。恢复可见后再试。")

@@ -97,11 +97,28 @@ type MyTagSection struct {
 	Tags     []MyTag `json:"tags"`
 }
 
-// SkillTags is the three groups `skill tags` reads.
+// SkillTags is the three groups `skill tags` reads, plus the caller's relation to the library.
+//
+// The relation is not a tag group: it is the same `library` object the information page draws its
+// button from, and v89 reads it before confirming a `skill leave` so the sentence names the real
+// consequence (ADR 0231).
 type SkillTags struct {
 	Category   *Category    `json:"category"`
 	PublicTags []Tag        `json:"public_tags"`
 	MyTags     MyTagSection `json:"my_tags"`
+	Library    LibraryView  `json:"library"`
+}
+
+// LibraryView is the caller's entry in their library, as the server derives it.
+//
+// PublicRung is the rung a stranger gets when the skill is public, or nil when it is private. v89
+// reads it so a public shared exit's sentence can say the skill is still callable (ADR 0231).
+type LibraryView struct {
+	Source     string  `json:"source"`
+	Active     bool    `json:"active"`
+	Joinable   bool    `json:"joinable"`
+	CanRemove  bool    `json:"can_remove"`
+	PublicRung *string `json:"public_rung"`
 }
 
 // PublicTagPage is one page of the public-tag vocabulary.
@@ -488,17 +505,27 @@ func (c Client) JoinLibrary(ctx context.Context, address string) (Change, error)
 	return c.library(ctx, http.MethodPost, address)
 }
 
-// LeaveLibrary deletes that reference. The private tags on the skill stay where they are and sleep.
-func (c Client) LeaveLibrary(ctx context.Context, address string) (Change, error) {
-	return c.library(ctx, http.MethodDelete, address)
+// LeaveLibrary takes the entry out of the library. `joinOnly` is the discovery page's undo: it
+// drops only the join reference, so a share that arrived afterwards stays (ADR 0231). The private
+// tags on the skill stay where they are and sleep.
+func (c Client) LeaveLibrary(ctx context.Context, address string, joinOnly bool) (Change, error) {
+	return c.libraryAt(ctx, http.MethodDelete, address, joinOnly)
 }
 
 func (c Client) library(ctx context.Context, method, address string) (Change, error) {
+	return c.libraryAt(ctx, method, address, false)
+}
+
+func (c Client) libraryAt(ctx context.Context, method, address string, joinOnly bool) (Change, error) {
 	path, err := SkillPath(address)
 	if err != nil {
 		return Change{}, err
 	}
-	body, err := c.request(ctx, method, path+"/library", nil)
+	suffix := "/library"
+	if joinOnly {
+		suffix += "?reference=join"
+	}
+	body, err := c.request(ctx, method, path+suffix, nil)
 	if err != nil {
 		return Change{}, err
 	}

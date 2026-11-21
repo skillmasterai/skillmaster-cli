@@ -59,6 +59,9 @@ var unadvertisedPerCommand = map[string]map[string]string{
 // elsewhere. They are refused, so the help must not list them, and the reason they appear in the
 // source at all is that sentence.
 var refusedPerCommand = map[string]map[string]string{
+	// The two verbs share one parser; undoing a join without ending a share is a property of
+	// leaving alone, so joining refuses the switch by name (v89).
+	"skill join": {"--join-only": "撤销加入只属于移出库"},
 	"skills search": {
 		"--all":       "检索只取一页",
 		"--namespace": "用 --scope 选范围",
