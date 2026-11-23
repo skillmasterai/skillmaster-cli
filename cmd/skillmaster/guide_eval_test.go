@@ -37,7 +37,7 @@ import (
 	"time"
 )
 
-const guideEvalPrompt = `你在隔离目录 %s 里。目录里的 guide/ 是 SkillMaster 官方使用指南，入口是 guide/SKILL.md。
+const guideEvalPrompt = `你在隔离目录 %s 里。目录里的 guide/ 是 SkillMaster AI 官方使用指南，入口是 guide/SKILL.md。
 
 任务：%s
 

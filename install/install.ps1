@@ -1,4 +1,4 @@
-﻿# Installs the SkillMaster CLI on Windows.
+﻿# Installs the SkillMaster AI CLI on Windows.
 #
 # **This file starts with a UTF-8 BOM, and it has to.** Windows PowerShell 5.1 decodes a BOM-less
 # script with the system ANSI codepage — GBK on a Chinese Windows — so the messages below arrive
@@ -220,13 +220,13 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say '客户端默认最多每 24 小时检查一次更新，下载的更新包按 checksums.txt 校验。'
     Say '不想自动更新：在 PowerShell profile 里设 $env:SKILLMASTER_AUTO_UPDATE=0。'
     Say ''
-    Say '可选：如果想让 SkillMaster 在这些 AI 工具里少弹窗，先看会改什么：'
+    Say '可选：如果想让 SkillMaster AI 在这些 AI 工具里少弹窗，先看会改什么：'
     Say ('  & "' + $target + '" doctor --fix --dry-run')
     Say ('确认后再运行 & "' + $target + '" doctor --fix；是否运行由你决定，这一步不会自动执行。')
     Say '然后确认登录：'
     Say ('  & "' + $target + '" auth status')
     Say '已登录后，新开一个会话，让 Agent 带你走一遍：'
-    Say '  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster 的新人引导'
+    Say '  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster AI 的新人引导'
     Say ('  其他 Agent：& "' + $target + '" startup')
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } finally {

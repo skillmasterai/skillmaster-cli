@@ -28,7 +28,7 @@ explicit door. The rule block that gets pasted into an agent's instruction file 
 **v27: the rule block searches by default, and the CLI stops managing the copy**
 ([ADR 0109](../docs/decisions/0109-the-rule-block-defaults-to-searching-first.md),
 [ADR 0110](../docs/decisions/0110-the-block-is-a-paragraph-the-cli-stops-managing.md)).
-The block in `internal/prompt/block.md` now says: except for small talk, look in SkillMaster before
+The block in `internal/prompt/block.md` now says: except for small talk, look in SkillMaster AI before
 any task, without judging whether you are "sure enough". It carries no markers any more — it is a
 paragraph of a file the person owns, and the platform skill writes it. So `skmr prompt` keeps
 only `print`; `install`, `status`, `update` and `uninstall` retired and answer with three lines

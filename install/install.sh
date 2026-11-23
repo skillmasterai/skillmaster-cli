@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the SkillMaster CLI on macOS and Linux.
+# Installs the SkillMaster AI CLI on macOS and Linux.
 #
 # The artifact names, the checksum file and this script's behaviour are specified in
 # skillmaster-cli/RELEASE.md §7; that document is the authority, this file is the implementation.
@@ -182,7 +182,7 @@ has_clients() {
 
 print_sandbox_step() {
   say ""
-  say "可选：让 SkillMaster 在这些 AI 工具里正常干活，不用每次用都弹窗问你。"
+  say "可选：让 SkillMaster AI 在这些 AI 工具里正常干活，不用每次用都弹窗问你。"
   say "这一步不会自动执行；是否执行由你决定，并且请在你自己的终端里运行。"
   say ""
   say "先看会改什么："
@@ -210,6 +210,6 @@ say ""
 say "下一步："
 say "  \"$INSTALL_DIR/skmr\" auth status"
 say "已登录后，新开一个会话，让 Agent 带你走一遍："
-say "  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster 的新人引导"
+say "  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster AI 的新人引导"
 say "  其他 Agent：\"$INSTALL_DIR/skmr\" startup"
 say "云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。"

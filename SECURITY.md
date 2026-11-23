@@ -11,5 +11,5 @@ Do not open a public issue for a vulnerability.
 ## Scope
 
 This repository contains the `skmr` command-line client and its install scripts. The hosted
-SkillMaster service, the console, and the server are separate, proprietary components and are
+SkillMaster AI service, the console, and the server are separate, proprietary components and are
 not covered by this repository's license.
