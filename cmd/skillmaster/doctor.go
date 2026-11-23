@@ -31,7 +31,7 @@ func doctorCmd(ctx context.Context, args []string) error {
 	if fix {
 		return doctorFix(undo, dryRun)
 	}
-	fmt.Println("SkillMaster 自检")
+	fmt.Println("SkillMaster AI 自检")
 
 	var problems []string
 	report := func(name, state, detail string) {
@@ -197,11 +197,11 @@ func doctorFix(undo, dryRun bool) error {
 	changes := agentconfig.Apply(want, undo, dryRun)
 	switch {
 	case dryRun:
-		fmt.Println("SkillMaster 沙箱白名单（只预览，不落盘）")
+		fmt.Println("SkillMaster AI 沙箱白名单（只预览，不落盘）")
 	case undo:
-		fmt.Println("SkillMaster 沙箱白名单（撤销）")
+		fmt.Println("SkillMaster AI 沙箱白名单（撤销）")
 	default:
-		fmt.Println("SkillMaster 沙箱白名单")
+		fmt.Println("SkillMaster AI 沙箱白名单")
 	}
 	for _, change := range changes {
 		fmt.Printf("  %-14s %s\n", change.Client, describeChange(change, undo, dryRun))
@@ -265,10 +265,10 @@ func printUndoSummary(dryRun bool, removed int) {
 	case removed == 0:
 		fmt.Println("没有可撤销的条目。")
 	case dryRun:
-		fmt.Printf("将会撤销与 SkillMaster 写入值完全一致的条目（实际未改动）。"+
+		fmt.Printf("将会撤销与 SkillMaster AI 写入值完全一致的条目（实际未改动）。"+
 			"纯字符串条目无法区分来源，同值条目也会被移除；WorkBuddy 的域名规则按 id 以 %s- 开头识别。\n", config.LegacyName)
 	default:
-		fmt.Printf("已撤销与 SkillMaster 写入值完全一致的条目（WorkBuddy 的域名规则按 id 以 %s- 开头识别）。"+
+		fmt.Printf("已撤销与 SkillMaster AI 写入值完全一致的条目（WorkBuddy 的域名规则按 id 以 %s- 开头识别）。"+
 			"纯字符串条目无法区分来源，同值条目也会被移除；"+
 			"为放行而打开的开关（allowLocalBinding、networkAccess、sandbox_mode）与可能留下的空数组不会还原（ADR 0186）。\n", config.LegacyName)
 	}
@@ -306,7 +306,7 @@ func fixFailure(failed int) error {
 
 // codexWorkspaceWarning says what the old Codex switch actually widens. **`workspace-write` is the
 // workspace, not the state directory**: `writable_roots` adds the state directory on top, so a
-// person who read "the SkillMaster folder" must see that the project becomes writable too.
+// person who read "the SkillMaster AI folder" must see that the project becomes writable too.
 // `--undo` removes arrays but does not restore the mode (ADR 0186 §后果).
 func codexWorkspaceWarning(changes []agentconfig.Change, dryRun bool) {
 	for _, change := range changes {
@@ -326,14 +326,14 @@ func codexWorkspaceWarning(changes []agentconfig.Change, dryRun bool) {
 			verb = "这次打开成了"
 		}
 		fmt.Printf("Codex 旧式：sandbox_mode %sworkspace-write，Codex 的工作区本身可写，"+
-			"不只是 SkillMaster 的状态目录；--undo 不还原这个开关。\n", verb)
+			"不只是 SkillMaster AI 的状态目录；--undo 不还原这个开关。\n", verb)
 		return
 	}
 }
 
 // geminiContainerNote keeps "written" from reading as "writable". On Linux the container sandbox
 // mounts `allowedPaths` read-only; writing the key there does not let the credential be saved, and
-// without this sentence the person would read the failure as a SkillMaster bug.
+// without this sentence the person would read the failure as a SkillMaster AI bug.
 func geminiContainerNote(changes []agentconfig.Change, dryRun bool) {
 	// The read-only mount is Linux-container behaviour; macOS uses Seatbelt and the sentence
 	// would be false there.

@@ -802,7 +802,7 @@ jobs:
           chmod 700 "$askpass"
           export GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0
           remote="https://gitee.com/skillmasterai/skillmaster-cli.git"
-          identity=(-c user.name="SkillMaster Bot" -c user.email="bot@skillmasterai.com")
+          identity=(-c user.name="SkillMaster AI Bot" -c user.email="bot@skillmasterai.com")
 
           # The source. Only the live channel touches `main`; a beta build is the same tree.
           if [ "$CHANNEL" = live ]; then

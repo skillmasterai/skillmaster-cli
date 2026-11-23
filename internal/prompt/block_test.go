@@ -18,7 +18,7 @@ func TestTheBlockIsTheApprovedText(t *testing.T) {
 		// What the block alone can do is make the agent load the skill *before* it has the rules —
 		// so that is all it says.
 		"铁律",
-		"任何任务都先调用 SkillMaster",
+		"任何任务都先调用 SkillMaster AI 这个 skill（技能库入口）",
 		"照它的要求做",
 		// The fail-safe survives: 「拿不准就调用」 is the one line that does not need the skill's
 		// contents to be actionable, which is exactly the moment the block exists for.
