@@ -62,6 +62,8 @@ func hintAllowed(args []string) bool {
 func hintRule(dir string) {
 	st, _, err := rule.LoadLocalState(dir)
 	if err != nil {
+		// A read error (permissions, a directory) still says nothing; a parse error is
+		// already a fresh state (see rule.LoadLocalState).
 		return
 	}
 	if st.Declined || st.HintedVersion >= rule.Version {

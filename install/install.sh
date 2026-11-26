@@ -16,7 +16,10 @@ BASE_URL="${SKILLMASTER_DL_URL:-https://dl.skillmasterai.com}"
 # An override exists for testing and for a mirror; the default is the only address users see.
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'install: %s\n' "$*" >&2; exit 1; }
+# **Own the name.** An exported `tmp` from the caller's shell must not be reported as this run's
+# directory before mktemp has run.
+tmp=""
+die() { printf 'install: %s\n' "$*" >&2; if [ -n "${tmp:-}" ]; then printf '（临时文件留在 %s）\n' "$tmp" >&2; fi; exit 1; }
 
 # `set -u` turns a missing HOME into `install.sh: 17: HOME: parameter not set` — no `install:`
 # prefix, no hint at what to do. Agent sandboxes run this with a stripped environment, so say it.
@@ -65,9 +68,9 @@ command -v curl >/dev/null 2>&1 || die "需要 curl（没有它下不了包）"
 # template under `$TMPDIR` (the writable one the sandbox provides) is what works.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/skillmaster-install.XXXXXX")" ||
   die "建不了临时目录：${TMPDIR:-/tmp}（如果沙箱拒绝了这次写入，请在你自己的终端里重新运行这条命令）"
-# Best effort: a sandbox may refuse deletion. Cleanup is not worth failing an install that has
-# already placed the binary, and the temp directory is the installer's own.
-trap 'rm -rf "$tmp" 2>/dev/null || true' EXIT
+# **No cleanup trap** (ADR 0250): deleting the temp directory is a file delete, and a sandbox stops
+# to ask about it. The directory stays under $TMPDIR for the OS to clear; nothing of the person's is
+# in it.
 # **In-place copy is not atomic.** If the process is killed while `cp` is writing, the installed
 # binary can be half a file with no backup. Say that instead of leaving a silent broken command.
 trap 'say "安装被中断；如果 $INSTALL_DIR/skmr 已存在，它可能不完整，请重跑安装。" >&2; exit 130' INT TERM
@@ -122,11 +125,11 @@ INSTALL_DIR="$resolved"
 # refused (Linux `ETXTBSY`); outside a sandbox it is the more atomic of the two.
 if ! cp "$tmp/skmr" "$INSTALL_DIR/skmr" 2>/dev/null; then
   cp "$tmp/skmr" "$INSTALL_DIR/skmr.new" ||
-    die "复制失败：$INSTALL_DIR（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）"
+    die "复制失败：$INSTALL_DIR（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令；如果写下了半成品，它在 $INSTALL_DIR/skmr.new，$INSTALL_DIR/skmr 也可能只写了一半）"
   chmod 755 "$INSTALL_DIR/skmr.new" ||
-    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
+    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令（暂存文件留在 $INSTALL_DIR/skmr.new）"
   mv -f "$INSTALL_DIR/skmr.new" "$INSTALL_DIR/skmr" ||
-    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
+    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令（暂存文件留在 $INSTALL_DIR/skmr.new；$INSTALL_DIR/skmr 也可能只写了一半）"
 else
   chmod 755 "$INSTALL_DIR/skmr" ||
     die "改不了 $INSTALL_DIR/skmr 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"

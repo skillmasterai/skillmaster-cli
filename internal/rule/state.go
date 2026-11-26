@@ -40,7 +40,10 @@ func LoadLocalState(dir string) (LocalState, bool, error) {
 	if err == nil {
 		var st LocalState
 		if err := json.Unmarshal(blob, &st); err != nil {
-			return LocalState{}, false, err
+			// **A torn write is no state, not a dead end.** Saving in place can leave a partial
+			// file; treating it as fresh lets the next save repair it. The cost is one extra
+			// notice or report, never permanent silence.
+			return LocalState{Schema: 2}, false, nil
 		}
 		return st, true, nil
 	}
@@ -67,8 +70,14 @@ func LoadLocalState(dir string) (LocalState, bool, error) {
 	return st, false, nil
 }
 
-// SaveLocalState writes the file atomically; failure is the caller's to ignore, because a lost
+// SaveLocalState writes the file in place; failure is the caller's to ignore, because a lost
 // throttle only means the next command tries again.
+//
+// **In place, not temp-and-rename.** Replacing an existing name asks the filesystem to delete it,
+// and a sandboxed agent (WorkBuddy 5.8.6, measured 2026-11-11 for the binary) allows writes to the
+// state directory but not that delete. The save would fail silently and every command would repeat
+// the notice or the report. A torn write is a corrupt file, which LoadLocalState treats as "no
+// state", so the next save repairs it.
 func SaveLocalState(dir string, st LocalState) error {
 	st.Schema = 2
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -78,32 +87,14 @@ func SaveLocalState(dir string, st LocalState) error {
 	if err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(dir, ".rule-state-*.json")
-	if err != nil {
+	path := LocalStatePath(dir)
+	if err := os.WriteFile(path, append(blob, '\n'), 0o600); err != nil {
 		return err
 	}
-	name := temp.Name()
-	// A half-written temporary file stays where it is rather than being deleted (ADR 0101).
-	if _, err := temp.Write(append(blob, '\n')); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Sync(); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Chmod(0o600); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(name, LocalStatePath(dir)); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return err
+	// **Chmod is best effort.** A new file already has 0600; an older one may be wider. A sandbox
+	// that refuses chmod must not turn a successful save into an error.
+	if info, err := os.Stat(path); err == nil && info.Mode().Perm() != 0o600 {
+		_ = os.Chmod(path, 0o600)
 	}
 	return nil
 }
