@@ -22,6 +22,7 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/api"
 	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
 	"github.com/skillmasterai/skillmaster-cli/internal/config"
+	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 	"github.com/skillmasterai/skillmaster-cli/internal/updater"
 	"github.com/skillmasterai/skillmaster-cli/internal/version"
 	"os"
@@ -96,6 +97,42 @@ func run(ctx context.Context, args []string) (err error) {
 	finishUpdate := autoUpdate(ctx, args)
 	defer finishUpdate()
 
+	// **The rule migrates once per RuleVersion, on commands that may write** (ADR 0242). Silent and
+	// local: it only touches files an earlier `skmr install` recorded, and a failure never changes
+	// what the command the person actually ran does. Read-only modes skip it: `doctor`, and any
+	// `install` without `--yes` (`--check`, `--dry-run`, `--undo`, `--decline`, a preview, or a
+	// usage error). A command that promises not to write must not write first.
+	// **A usage error writes nothing.** Parsing first (it has no side effects) keeps `install --yes`
+	// without `--file`, a misspelt flag, or a missing value from migrating recorded files before the
+	// usage error is printed.
+	if args[0] == "install" {
+		if _, err := parseInstallArgs(args[1:]); err != nil {
+			return err
+		}
+	}
+	if dir, dirErr := config.Dir(); dirErr == nil {
+		pointRuleReadsAtRealState(dir)
+		if !readOnlyRuleMode(args) {
+			if n, err := rule.MigrateIfNeeded(dir); err != nil {
+				fmt.Fprintf(os.Stderr, "（守则没有迁移成功：%v。用 skmr install --check 看状态；如果在 Agent 的沙箱里，换到沙箱外重跑这条命令即可。）\n", err)
+			} else if n > 0 {
+				fmt.Fprintf(os.Stderr, "（已把 %d 个文件里的旧守则更新成新版本。）\n", n)
+			}
+		}
+		// **Coverage, after a command that succeeded, never in its way** (v94). `install` writes send
+		// immediately; everything else at most once a day. A refused command sends nothing: "no
+		// request before the refusal" is a promise several commands make, and telemetry is not an
+		// exception to it. `install --check` sends from inside its own handler so a found problem
+		// is still reported.
+		force := args[0] == "install" && !readOnlyRuleMode(args)
+		skipReport := args[0] == "install" && hasFlag(args[1:], "--check")
+		defer func() {
+			if err == nil && !skipReport {
+				reportRule(dir, force)
+			}
+		}()
+	}
+
 	switch args[0] {
 	case "login":
 		return login(ctx, args[1:])
@@ -105,6 +142,8 @@ func run(ctx context.Context, args []string) (err error) {
 		return logout(args[1:])
 	case "startup":
 		return startup(ctx, args[1:])
+	case "install":
+		return installCmd(args[1:])
 	case "update":
 		return updateCmd(ctx, args[1:])
 	case "prompt":

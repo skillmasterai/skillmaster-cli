@@ -62,7 +62,7 @@ git tag cli/v1.0.0 && git push origin cli/v1.0.0
 
 - **文件名不带版本号**。这样下载地址永久稳定，安装说明不用跟着每次发版改。版本号由二进制自己说。
 - **unix 用 `.tar.gz`，Windows 用 `.zip`**——跟 Go 自己和绝大多数项目的做法一致，Windows 上双击就能解。
-- 每次发布另有：`checksums.txt`（六个平台包、技能包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
+- 每次发布另有：`checksums.txt`（六个平台包与两个安装脚本的 SHA-256）、`checksums.txt.sigstore.json`、`checksums.txt.minisig`、`minisign.pub`、`install.sh`、`install.ps1`，以及 `version.txt`——站点当前发的是哪一版，只有一行的纯文本，见 §6。
 - **同一批文件另存一份在 GitHub Release 与 Gitee**（标签即发布，正式与 beta 都建；排练不建）。存在的理由只有一个：给**没有任何校验工具**的读者一条可执行的核对路径——从下载站与另一个来源各取一份 `checksums.txt` 比较字节。证明的不是签名者是谁，而是两个独立来源没有各说各话。GitHub 在大陆不稳定，Gitee 是那条能打开的；它同时托管源码镜像（`main`），清单放在不合并的 `releases` 分支的 `v<版本>/` 下。Gitee 那一步走 HTTPS + `GITEE_TOKEN`：这个仓库的部署公钥被 Gitee 以「DeployKey does not support push code」拒绝，原因在钥匙类型而非权限开关。
 
 ## 5 · 构建参数
@@ -82,7 +82,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **线上地址只在一个地方**：仓库变量 `SKILLMASTER_PUBLIC_BASE_URL`（`https://console.skillmasterai.com`）。流水线把它注入二进制，部署流水线把同一个变量渲染进服务端的 `server.env`，服务端再用它公布 `issuer`——CLI 拨的地址和服务端自称的地址因此是**同一个值**，不是两处要人保持同步的配置。变量为空时构建**直接失败**：一个连 localhost 的正式包比一个没发出来的版本更糟。构建完还有一条断言，从包里把 `linux/amd64` 解出来 `grep` 这个地址——`-X` 指向一个不存在的符号不会报错。
 
-**更新通道必须注入**（v25，[ADR 0103](../docs/decisions/0103-the-cli-updates-itself.md)）：`version.UpdateBase` 是这个二进制自己更新的基址——正式版是 `https://dl.skillmasterai.com`，内测版是它的 `beta/`。下载的文件在 OSS 桶里，`dl.` 是桶的前门；安装脚本、技能包与自更新共用这一个地址。**通道是编译进去的，不是运行时读的**：一台机器不会因为读到某个文件就从正式轨被拐到内测轨。没注入的构建空值即「不参与更新」，而它在用户那里与「没有新版本」长得一模一样，所以两个流水线都从包里 `grep` 它，和 `DefaultServer` 同一条断言。
+**更新通道必须注入**（v25，[ADR 0103](../docs/decisions/0103-the-cli-updates-itself.md)）：`version.UpdateBase` 是这个二进制自己更新的基址——正式版是 `https://dl.skillmasterai.com`，内测版是它的 `beta/`。下载的文件在 OSS 桶里，`dl.` 是桶的前门；安装脚本与自更新共用这一个地址。**通道是编译进去的，不是运行时读的**：一台机器不会因为读到某个文件就从正式轨被拐到内测轨。没注入的构建空值即「不参与更新」，而它在用户那里与「没有新版本」长得一模一样，所以两个流水线都从包里 `grep` 它，和 `DefaultServer` 同一条断言。
 
 **测试与镜像的接缝**：`SKILLMASTER_UPDATE_BASE` 覆盖更新基址，优先于编译进去的通道——它是给测试和镜像用的，不改变二进制自称属于哪条通道。别把它写进安装说明。
 
@@ -100,11 +100,9 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **不放 GitHub Releases**：目标用户在国内，那个域名对他们不可用。git tag 仍然标记版本历史，但**产物只有一个家**。构建来源证明（attestation）存在 GitHub 上，它证明的是「这些字节由哪条工作流、哪个提交构建」，不是产物的下载地址。
 
-**技能包也在这里发。** `skillmaster.tgz`（只有 `skillmaster/SKILL.md`）从公开仓库 `skillmasterai/skillmaster-skills` 的固定提交取来，打进 `dist/`，因此它同样列在 `checksums.txt` 里、同样被 attestation 与两个签名覆盖。站点不再发布这份包——否则页面部署一次就会用未签名的字节盖掉签名产物的地址。它是**连不上 GitHub、没有 Node** 的用户的兜底安装路径。
-
 **可验证性**：每次发布同时产出三种独立证明。`checksums.txt.sigstore.json` 是 cosign keyless 签名，绑定本仓库工作流的 GitHub OIDC 身份并记入 Sigstore 透明日志；`checksums.txt.minisig` 是 minisign 签名，配合同次发布的 `minisign.pub`，可以完全离线验证。GitHub 的构建来源证明用 `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli` 核对。三者证明的是不同的事：签名说明「这次发布由谁签」，attestation 说明「这些字节由哪次构建产生」。
 
-**上传顺序**：先六个平台包与一个技能包（`skillmaster.tgz`）→ 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
+**上传顺序**：先六个平台包 → 再 `checksums.txt` → 两个签名文件与公钥 → 两个安装脚本 → 最后 `version.txt`。读端拿到校验和时，它描述的东西已经在位；签名紧跟校验和，因为它是校验和的身份；脚本放最后，因为它一旦可取就该能装成功；`version.txt` 记的是「站点现在发的是哪一版」，只有它担保的东西都到位了才写。
 
 **先暂存，再动线上的键。** 键名不带版本号，一次传到一半就会留下「一版的包 + 另一版的校验和」，那三平台上的安装全部失败。所以先传进 `releases/<版号>/`，在那里逐个核对，再逐个搬到正式键上。S3 没有多对象提交，窗口只能缩短、不能关闭——窗口很短，安装脚本本身会失败退出，重跑同一个 tag 能补齐（见上一条的例外）。
 
@@ -113,7 +111,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 **暂存的前缀是公开的、不会自动清理的。** `releases/<版号>/` 在同一个公共读 bucket 里，所以整份也
 可以按地址取到（`https://dl.skillmasterai.com/releases/<版号>/…`）。它同时是**手工恢复**时唯一
 现成的来源——但**「重跑旧 tag」不是恢复手段**，那会被下面的守卫直接拒绝。恢复是两步手工动作：
-把那一版的十三个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
+把那一版的十二个对象逐个 `rclone copyto` 回正式键，再把 `version.txt` 改回那个版号（不改就成了
 「新标记 + 旧产物」；改回去，那个旧版号也就重新可以发了）。代价值得写下来——每次正式发布会留下
 约 50 MB，删旧前缀是手工动作，见 [部署说明](../deploy/README.md)。
 
@@ -143,7 +141,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **原地写没有原子性**：`cp` / `Copy-Item` 一开始写就截断目标，进程被杀、沙箱超时或磁盘满会留下半截二进制，且没有备份；`install.sh` 的 `INT`/`TERM` trap 会提示重跑安装（`install.ps1` 没有 trap）。staged 退路只在复制返回失败时触发，覆盖不了「复制进程被杀」。
 
-**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾打印的下一步是 `auth status`；已登录后提示新开会话、把安装说明里的提示词发给 Agent，不再让安装会话运行 `startup`；人自己在终端装时仍打印 `startup` 作为读正文的替代。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `doctor --fix`，再 `auth status`，然后新开会话交提示词。
+**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾打印的下一步是 `auth status`；已登录后打印 `skmr install --file <路径> --agent <名> --yes`（路径由用户或 Agent 提供），再 `skmr install --check`；新人引导可选，运行 `skmr startup`。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `doctor --fix`，再 `auth status`，然后同样安装守则。
 
 **用法**：
 
@@ -172,7 +170,7 @@ git tag cli/v1.6.3-beta.1 && git push origin cli/v1.6.3-beta.1
 |---|---|
 | 版本串 | 取自标签：`1.6.3-beta.1`。同一提交的正式构建叫 `1.6.3`；beta 标签不占正式号 |
 | 构建身份 | 提交号。`skmr --version` 打印 `skmr 1.6.3-beta.1 (a1b2c3d) (API v1)` |
-| 落在哪 | 桶的 `beta/` 下的十三个对象 + `beta/version.txt`（内容 `1.6.3-beta.1 (a1b2c3d)`）+ `beta/releases/1.6.3-beta.1/` 暂存区 |
+| 落在哪 | 桶的 `beta/` 下的十二个对象 + `beta/version.txt`（内容 `1.6.3-beta.1 (a1b2c3d)`）+ `beta/releases/1.6.3-beta.1/` 暂存区 |
 | 怎么装 | `curl -fsSL https://dl.skillmasterai.com/beta/install.sh \| SKILLMASTER_DL_URL=https://dl.skillmasterai.com/beta sh` |
 | 怎么更新 | 自动更新（v25）按编进去的 `beta/` 通道检查；也可以重跑那条安装命令，看 `--version` 的提交号变没变 |
 | 证明身份 | `gh attestation verify <文件> --repo skillmasterai/skillmaster-cli --signer-workflow skillmasterai/skillmaster-cli/.github/workflows/cli-release.yml` |

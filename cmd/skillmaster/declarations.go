@@ -6,8 +6,8 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
-// commandHelp is the whole command table: 100 command paths, nine pure groups, the top level, and
-// four topics. The declarations live here, next to the handlers, because the help and the command have one
+// commandHelp is the whole command table: 101 command paths, nine pure groups, the top level, and
+// five topics. The declarations live here, next to the handlers, because the help and the command have one
 // home (v16 做 #7). One declaration per command; the command-tree test proves the set matches the
 // dispatch.
 type declarationsCatalog struct {
@@ -72,12 +72,27 @@ var commandHelp = declarationsCatalog{
 			Name:  "env",
 			Label: "环境变量",
 			Body: `环境变量：
-  SKILLMASTER_SERVER       服务端地址（本地默认 localhost:8080）
-  SKILLMASTER_API_KEY      API key；优先级最高，不写本机。别 echo 它
-  SKILLMASTER_SKILLS_DIR   submit 解析裸名字的目录（默认 ~/.claude/skills）
-  SKILLMASTER_WEB_URL      审批页地址（默认同服务端）
-  SKILLMASTER_AUTO_UPDATE  设 0 关掉自动更新（update 照常可用）
+  SKILLMASTER_SERVER       服务端地址（默认本地）
+  SKILLMASTER_API_KEY      API key；优先级最高，别 echo
+  SKILLMASTER_SKILLS_DIR   submit 裸名字的目录（默认 ~/.claude/skills）
+  SKILLMASTER_WEB_URL      审批页地址（默认同上）
+  SKILLMASTER_AUTO_UPDATE  设 0 关自动更新
+  SKILLMASTER_REPORT       设 0 关安装状态上报
 无人值守：控制台 /account/keys 签 skm_… 填进 SKILLMASTER_API_KEY，auth status 验证。
+`,
+		},
+		"rule": {
+			Name:  "rule",
+			Label: "守则安装",
+			Body: `守则安装（给 Agent）：
+  1. 先问用户写进哪个全局指令文件；给出路径前不要猜。
+  2. 同意后：skmr install --file <路径> --agent <agent> --yes
+  3. 回读：skmr install --check
+  4. CLI 写不了：prompt print 取正文，手写进同一路径，
+     再 install --file <同一路径> --yes 登记，然后 --check
+  5. 拒绝：skmr install --decline，之后不再询问
+  6. 看状态：skmr doctor
+路径由用户提供，CLI 不告诉 Agent 默认路径。
 `,
 		},
 		"auth": {
@@ -126,7 +141,7 @@ var topSpecs = []*help.Spec{
 	{
 		Path:      "",
 		Summary:   "SkillMaster AI 命令行",
-		Children:  []string{"skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "auth", "login", "logout", "startup", "prompt", "update", "run", "doctor", "settings"},
+		Children:  []string{"skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "auth", "login", "logout", "startup", "install", "prompt", "update", "run", "doctor", "settings"},
 		PureGroup: true,
 	},
 	{
@@ -272,7 +287,7 @@ var topSpecs = []*help.Spec{
 		Path:    "doctor",
 		Summary: "自检；--fix 改配置",
 		Usage:   "skmr doctor [--fix [--undo] [--dry-run]]",
-		Output: "不带参数：只打印七行状态（末行回答「这个进程能不能直接敲 skmr」），必要时另加一段按客户端区分的可复制配置，不写任何设置。\n" +
+		Output: "不带参数：只打印八行状态（「守则」一行只报各状态计数与补救，不打印路径、文件内容或默认路径表；末行回答「这个进程能不能直接敲 skmr」），必要时另加一段按客户端区分的可复制配置，不写任何设置。\n" +
 			"--fix：运行即表示同意写入；把状态目录与 SkillMaster AI 的平台/更新域名写进检测到的客户端；" +
 			"没有域名键的打开网络总开关，" +
 			"Codex 旧式还会打开工作区可写（不只是状态目录）。" +
@@ -306,6 +321,34 @@ var topSpecs = []*help.Spec{
 		Parent:   "auth",
 		Exits:    exitsWithCredential,
 	},
+	// **`install` writes the rule, `prompt print` hands it over by hand** (v94, ADR 0242). The target
+	// is always `--file`: a default path would be the CLI guessing where somebody's agent reads its
+	// instructions, and a guess that lands in the wrong file is worse than an extra question.
+	{
+		Path:    "install",
+		Summary: "安装守则",
+		Usage:   "skmr install --file <路径> [--agent <名>] [--yes] [--dry-run] [--undo] | --check | --decline",
+		Flags: []help.Flag{
+			{Name: "--file", Value: "<路径>", Summary: "要写入的用户级指令文件；只有这一个来源"},
+			{Name: "--agent", Value: "<名>", Summary: "标注是哪个 Agent，只用于检查与上报"},
+			{Name: "--yes", Summary: "确认写入；不加只预览"},
+			{Name: "--dry-run", Summary: "只打印计划，不写文件"},
+			{Name: "--undo", Summary: "用备份还原，或把新建的文件清空"},
+			{Name: "--check", Summary: "回读记录过的文件"},
+			{Name: "--decline", Summary: "记下用户拒绝：不再提示"},
+		},
+		Output: "写入前先备份；同一份守则在文件里只保留一份，重复运行说「已是最新」。\n" +
+			"本机已有的技能目录原样保留，不改名也不删除（ADR 0245）。\n" +
+			"只写用户级文件；不碰项目级文件、MCP、沙箱与网络白名单。",
+		Failures: []help.Failure{
+			{Code: "usage", Summary: "缺 --file，或几个模式混用", Next: "一次只做一件事；写文件必须给 --file"},
+		},
+		Examples: []string{"skmr install --file <路径> --agent <名> --yes",
+			"skmr install --check"},
+		Parent: "",
+		Next:   "skmr install --check",
+		Exits:  exitsLocal,
+	},
 	// The two doors added by v25. Both are local: `prompt` never talks to the server, and `update`
 	// talks to the release bucket rather than to the API.
 	//
@@ -314,7 +357,7 @@ var topSpecs = []*help.Spec{
 	// journey does — 「那段说明」 — not 「规则段」, which is our word for it (v26 prd §话术).
 	{
 		Path:      "prompt",
-		Summary:   "写进 Agent 文件的那段说明",
+		Summary:   "打印守则正文",
 		Children:  []string{"print"},
 		PureGroup: true,
 	},
@@ -339,7 +382,7 @@ var topSpecs = []*help.Spec{
 	},
 	{
 		Path:    "prompt print",
-		Summary: "打印那段说明的正文",
+		Summary: "打印守则正文",
 		Usage:   "skmr prompt print",
 		Output:  "把这个二进制自带的那段说明原样写到 stdout，断网、没有凭据也能用。",
 		Failures: []help.Failure{

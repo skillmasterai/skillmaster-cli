@@ -225,9 +225,10 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say ('确认后再运行 & "' + $target + '" doctor --fix；是否运行由你决定，这一步不会自动执行。')
     Say '然后确认登录：'
     Say ('  & "' + $target + '" auth status')
-    Say '已登录后，新开一个会话，让 Agent 带你走一遍：'
-    Say '  把 /skill-name 当入口的 Agent（如 Claude Code）：/skillmaster 带我走一遍 SkillMaster AI 的新人引导'
-    Say ('  其他 Agent：& "' + $target + '" startup')
+    Say '已登录后，把守则写进你的 Agent：先问它「你的全局指令文件在哪」，再运行'
+    Say ('  & "' + $target + '" install --file <路径> --agent <Agent 名，如 claude-code> --yes')
+    Say ('  & "' + $target + '" install --check')
+    Say ('新人引导（可选）：& "' + $target + '" startup')
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } finally {
     # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it

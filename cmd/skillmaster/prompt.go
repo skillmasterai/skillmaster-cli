@@ -10,12 +10,10 @@ import (
 
 // `prompt` — the rule block that goes into an agent's instruction file.
 //
-// **The block is a paragraph, and writing it belongs to the journey** (ADR 0110, 2026-10-28).
-// Until this version the CLI also wrote the paragraph (`install`), located it again through two
-// HTML comment markers, then updated or removed it (`status`, `update`, `uninstall`). The markers
-// are gone: the paragraph lives in a file the person owns, and the platform skill writes it. All
-// four retired. What is left is `print` — the text itself — which is what the journey and a person
-// pasting by hand both need.
+// **The block is a paragraph, and `print` is the escape hatch for writing it by hand** (v94, ADR
+// 0242; ADR 0110 retired the marker-based `status` / `update` / `uninstall`). `skmr install --file`
+// is the normal path; `print` is what an agent uses where the CLI cannot write — a sandbox, a
+// read-only mount — and the file is then registered with `install --file` like any other.
 func promptVerb(ctx context.Context, args []string) error {
 	_ = ctx
 	if len(args) == 0 {
@@ -45,12 +43,9 @@ func retiredPromptVerb(name string) error {
 	// **On stderr, like every other refusal.** stdout carries results — for this group that means
 	// exactly one thing, the block from `prompt print` — so `skmr prompt install > notes.md`
 	// must not put prose in the file.
-	fmt.Fprintf(os.Stderr, "skmr prompt %s 已经退役：写进 Agent 文件的那段说明现在由 skmr startup 负责，CLI 不再检查、写入或修改它。\n", name)
-	fmt.Fprintln(os.Stderr, "要看那段说明的正文：skmr prompt print。")
-	// **By position, not by a quoted label.** 「让 Agent 先来 SkillMaster 找技能」 was the name of
-	// an item in the seven-item `--plan` list, which no longer exists (ADR 0111); the journey asks
-	// two questions and this one is first. Borrowing the old label would point at a list nobody sees.
-	fmt.Fprintln(os.Stderr, "要写或更新：重跑 skmr startup，在它列的清单里选第一项。")
+	fmt.Fprintf(os.Stderr, "skmr prompt %s 已经退役：写守则改用 skmr install --file <路径> --yes。\n", name)
+	fmt.Fprintln(os.Stderr, "只想要正文：skmr prompt print。")
+	fmt.Fprintln(os.Stderr, "给 Agent 的完整步骤：skmr help rule。")
 	return &exitError{code: 2}
 }
 

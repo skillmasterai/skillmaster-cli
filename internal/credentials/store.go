@@ -131,6 +131,15 @@ func Open(loc Location, server string) (Store, string) {
 	return newFileFirst(file, keychain), notice
 }
 
+// OpenFile is the file-only store: no keychain, no prompt, no wait.
+//
+// **For background work that must not ask a person anything.** The account-level coverage report runs
+// after an ordinary command; reaching the macOS keychain there would raise an authorization dialog
+// in front of an agent, so a credential that only lives in the keychain simply means "no report".
+func OpenFile(loc Location) Store {
+	return &fileStore{path: loc.Path, older: loc.Older}
+}
+
 // OpenKeyring is the store `login --keyring` asks for: the keychain first, the file as the fallback
 // ADR 0025 keeps. It is the shape every machine got before ADR 0185, and it stays available for the
 // people who want it.

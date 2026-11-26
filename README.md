@@ -37,13 +37,23 @@ pointing at `prompt print` and `skmr startup` (exit 2). `prompt.json` is still r
 takes no flags: `--plan` and its `--agent` / `--file` are gone, because no surface called them
 (ADR 0111).
 
+**v94: the CLI writes the rule again, into a file the person names**
+([ADR 0242](../docs/decisions/0242-the-cli-installs-and-upgrades-the-rule.md)). The entry skill is
+retired; `skmr install --file <path>` writes the 守则 into an agent's user-level instruction file,
+backing it up first and refusing to guess the path. When the rule's own `RuleVersion` changes, the
+next command that may write migrates the exact old block in the files this machine recorded
+(`doctor` and any `install` without `--yes` do not); a hand-edited rule is left alone. `skmr install --check` reads those records back, `skmr doctor` shows their state, and an
+account-scoped report carries seven booleans/enums and no path or content. The v27 paragraph above
+describes the state that version introduced, not today's behaviour.
+
 ## Startup, in one paragraph
 
 `skmr startup` is the journey itself, and it takes no flags. It signs in, then loads the
 journey body from the platform (`skillmaster/skillmaster-startup`) and prints it verbatim on stdout; importing
 local skills is optional. Two things go to stderr, best effort: where the person is in the journey (ADR 0096, on its own
-20-second budget) and which agents this machine has written the rule block for (`prompt.json`, a
-local file read): the records are still named, but v38 stopped writing the block, so the line says the old copy can stay where it is.
+20-second budget) and which agents still carry the rule (`install.json`, v94): only files that
+still contain the current block are named — a missing or out-of-scope record is left out, and with
+no such file the line is not printed at all.
 When a fact cannot be read, the line is simply not printed — nothing is reported as done on a guess.
 
 **Implemented** (2026-10-07; the unattended login was removed in v3 — ADR 0038 §决定 9 — and the

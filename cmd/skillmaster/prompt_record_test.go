@@ -1,35 +1,18 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/skillmasterai/skillmaster-cli/internal/config"
-	"github.com/skillmasterai/skillmaster-cli/internal/prompt"
+	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 )
 
-// writePromptStore plants a `prompt.json` the way the last writing version of the CLI would have.
-// Nothing writes one any more (ADR 0110), so the fixture writes the file itself.
-func writePromptStore(t *testing.T, dir string, store prompt.Store) {
-	t.Helper()
-	blob, err := json.Marshal(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "prompt.json"), blob, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// **The record line outlived the plan it used to be printed by** (v27). `startup --plan` is gone
-// (ADR 0111); `startup` itself still names the AIs this machine has already been configured for,
-// because that is the local answer to 「我换了一个 AI，还要再写吗」 (ADR 0104).
+// **The line that answers 「我换了一个 AI，还要再写吗」 now reads the rule install state** (v94,
+// ADR 0242). `prompt.json` is frozen history; what counts is which agents `skmr install --file` has
+// actually written, and that is `install.json`.
 func TestStartupPrintsTheRecordedAIsOnStderr(t *testing.T) {
 	const body = "# SkillMaster 入门\n\n一条链，不是菜单。\n"
 	server := startupServer(t, body)
@@ -39,9 +22,13 @@ func TestStartupPrintsTheRecordedAIsOnStderr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writePromptStore(t, dir, prompt.Store{Schema: 2, Files: []prompt.Record{{
-		File: filepath.Join(os.Getenv("HOME"), "CLAUDE.md"), Agent: "claude", Digest: prompt.Digest(),
-	}}})
+	target := filepath.Join(os.Getenv("HOME"), "CLAUDE.md")
+	writeFile(t, target, string(rule.Block()))
+	if err := rule.SaveState(dir, rule.State{Schema: 1, RuleVersion: rule.Version, Files: []rule.File{{
+		Path: target, Agent: "claude",
+	}}}); err != nil {
+		t.Fatal(err)
+	}
 
 	stdout, stderr, status := runCaptured(t, "startup")
 	if status != 0 {
@@ -50,31 +37,8 @@ func TestStartupPrintsTheRecordedAIsOnStderr(t *testing.T) {
 	if !strings.HasSuffix(stdout, body) {
 		t.Errorf("stdout does not end with the journey body:\n%s", stdout)
 	}
-	if !strings.Contains(stderr, "这台电脑上写过这段说明的 Agent：claude") {
+	if !strings.Contains(stderr, "已经写入守则的 Agent：claude") {
 		t.Errorf("stderr does not name the recorded AI:\n%s", stderr)
-	}
-}
-
-func TestPromptRecordLineNamesEachConfiguredAI(t *testing.T) {
-	dir := isolateConfig(t)
-	writePromptStore(t, dir, prompt.Store{Schema: 2, Files: []prompt.Record{
-		{File: "/a/CLAUDE.md", Agent: "claude", Digest: "sha256:1"},
-		{File: "/b/AGENTS.md", Agent: "codex", Digest: "sha256:2"},
-		{File: "/c/AGENTS.md", Agent: "claude", Digest: "sha256:3"},
-		{File: "/d/AGENTS.md", Digest: "sha256:4"},
-	}})
-	line, ok := promptRecordLine()
-	if !ok || !strings.Contains(line, "claude、codex") {
-		t.Fatalf("line = %q, ok=%v", line, ok)
-	}
-	if strings.Count(line, "claude") != 1 {
-		t.Errorf("a repeated label was not deduplicated: %q", line)
-	}
-	if !strings.Contains(line, "未命名") {
-		t.Errorf("an unlabelled v25 record is not called 未命名: %q", line)
-	}
-	if strings.Contains(line, "/d/AGENTS.md") {
-		t.Errorf("the line shows a path: %q", line)
 	}
 }
 

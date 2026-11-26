@@ -131,29 +131,39 @@ func helpCommandTable() map[string]*guideCommand {
 	return table
 }
 
-// guideFiles is every Markdown file the checks read: the moved Guide, plus the entry skill that
-// routes an Agent to it.
+// guideFiles is every Markdown file the checks read: the Guide, plus the entry skill when the
+// checkout still has one.
+//
+// **v94 retires the entry skill** (ADR 0242): new installs do not deliver it and the repository no
+// longer carries it, so its absence is the expected state. A checkout that still has the directory
+// keeps getting it checked until the directory is gone.
 func guideFiles(t *testing.T, root string) []string {
 	t.Helper()
 	var files []string
-	guideDir := filepath.Join(root, "skills", "skillmaster-guide")
-	err := filepath.WalkDir(guideDir, func(path string, d os.DirEntry, err error) error {
+	for _, dir := range []string{
+		filepath.Join(root, "skills", "skillmaster-guide"),
+		filepath.Join(root, "skills", "skillmaster"),
+	} {
+		if _, err := os.Stat(dir); err != nil {
+			continue
+		}
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".md") {
+				files = append(files, path)
+			}
+			return nil
+		})
 		if err != nil {
-			return err
+			t.Fatalf("walk %s: %v", dir, err)
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".md") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk the Guide source: %v", err)
 	}
-	entry := filepath.Join(root, "skills", "skillmaster", "SKILL.md")
-	if _, err := os.Stat(entry); err != nil {
-		t.Fatalf("the entry skill is missing: %v", err)
+	if len(files) == 0 {
+		t.Fatal("no Guide source found")
 	}
-	return append(files, entry)
+	return files
 }
 
 // skmrInvocations returns every `skmr` invocation on a Guide line. A line can name more than one

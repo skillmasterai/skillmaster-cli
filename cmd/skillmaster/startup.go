@@ -70,10 +70,10 @@ func startup(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr)
 	}
 	cancelState()
-	// **Which AI tools this machine has already been configured for.** Local and best effort: this
-	// is the line that answers 「我换了一个 AI，还要再写吗」 without a server request. It goes to
-	// stderr because the declaration promises the journey verbatim on stdout.
-	if line, ok := promptRecordLine(); ok {
+	// **Which AI tools already carry the rule.** Local and best effort: this is the line that
+	// answers 「我换了一个 AI，还要再写吗」 without a server request. It goes to stderr because the
+	// declaration promises the journey verbatim on stdout.
+	if line, ok := installedRuleLine(); ok {
 		fmt.Fprintln(os.Stderr, line)
 		fmt.Fprintln(os.Stderr)
 	}
