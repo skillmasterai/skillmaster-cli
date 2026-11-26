@@ -227,8 +227,8 @@ func authenticatedWith[T any](ctx context.Context, noLogin bool,
 		// named reasons give, and the design names it there for the same reason: this path has no
 		// renewal, so the answer is another login rather than waiting for one.
 		return nothing, fmt.Errorf("%w；这份凭据是一次 CLI 登录换来的，"+
-			"重新运行 skmr login 点一下就能换一份新的\n      这份凭据来自 %s。",
-			err, credentialSource())
+			"重新运行 skmr login 点一下就能换一份新的。%s\n      这份凭据来自 %s。",
+			err, agentRunsTheLogin, credentialSource())
 	}
 	return result, err
 }

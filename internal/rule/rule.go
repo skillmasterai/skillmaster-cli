@@ -21,7 +21,7 @@ const legacyCommand = config.LegacyName
 // **It changes only when the text changes in substance** (ADR 0242): a typo or a rephrasing is not a
 // new rule, and bumping it would trigger a migration for nothing. Detection, migration and the one
 // notice all hang off this number.
-const Version = 2
+const Version = 3
 
 // Block is the rule text this binary carries, ending in a newline.
 func Block() []byte { return prompt.Block() }
@@ -72,6 +72,9 @@ var legacyBlocks = [][]byte{
 		"3. 本地 / 内置列表不完整，电脑上的旧副本也不是来源，都不能当「没有」的依据。\n" +
 		"4. 改 skill 在线做：文本用 `skill write <地址>@new <路径> --name <版名>`，图片 / PDF 等二进制用 `skill put <地址>@<版本码> <本地文件> <远端路径>`（`put` 只写已有草稿）；新建用 `skill create`；上线由人在网页上点。\n" +
 		"5. 其他命令见 `skmr help`。\n"),
+	// v94: the rule this build replaces. Every bump registers the previous text here so migration
+	// can find it — a version number alone names no bytes.
+	[]byte("SkillMaster 守则：\n涉及个人隐私的查询，先问用户是否同意；同意后再搜，不要先搜。\n开始任何任务前，先跑 `skmr skills search \"<任务一句话>\"`；没有查到就按常规继续。\n要新建/修改/发布/共享/删除 skill 时，先跑 `skmr help` 看怎么做。\n闲聊、常识问答和简单计算/翻译不用。\n"),
 }
 
 // legacySpanOutside returns the span of a legacy block that does not overlap the current rule.

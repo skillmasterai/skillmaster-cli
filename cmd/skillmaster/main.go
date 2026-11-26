@@ -130,6 +130,11 @@ func run(ctx context.Context, args []string) (err error) {
 			if err == nil && !skipReport {
 				reportRule(dir, force)
 			}
+			// **The rule notice rides the same success and the same silence** (ADR 0246): one line on
+			// stderr, at most once per rule version, and only on commands that actually use the rule.
+			if err == nil && !readOnlyRuleMode(args) && hintAllowed(args) && hintRuns {
+				hintRule(dir)
+			}
 		}()
 	}
 
