@@ -16,7 +16,7 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/version"
 )
 
-// AutoUpdateEnv turns the automatic check off. **Only the automatic path**: `skmr update`
+// AutoUpdateEnv turns the automatic check off. **Only the automatic path**: `skmr self update`
 // still works, the way `DISABLE_AUTOUPDATER` in Claude Code leaves `claude update` alone.
 const AutoUpdateEnv = "SKILLMASTER_AUTO_UPDATE"
 
@@ -77,7 +77,7 @@ func updateBase() string {
 // **The updater only replaces a binary it was installed as.** Anywhere else — a copy in
 // `/usr/local/bin`, a build output, a symlink in `~/bin` — the file belongs to whoever put it
 // there, and replacing it is the CLI deciding what to do with somebody else's machine. The explicit
-// `skmr update` says so and points at the installer; the automatic path stays quiet.
+// `skmr self update` says so and points at the installer; the automatic path stays quiet.
 func officialInstallDirs() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -131,7 +131,16 @@ func autoUpdateAllowed(args []string) bool {
 	}
 	// An `if`, not a `switch args[0]`: the switch shape is reserved for command dispatch, and the
 	// command-tree test reads it that way.
+	//
+	// **The 1.10.1 names, because the rewrite in run() comes first** (ADR 0248): `self update` replaces
+	// the binary this process is running, `self doctor` is the diagnosis for when that goes wrong,
+	// and `self rule` runs offline by contract. The old spellings are kept for any caller that
+	// reaches here without the rewrite.
 	if args[0] == "--version" || args[0] == "help" || args[0] == "update" || args[0] == "prompt" {
+		return false
+	}
+	if args[0] == "self" && len(args) > 1 &&
+		(args[1] == "update" || args[1] == "doctor" || args[1] == "rule") {
 		return false
 	}
 	for _, arg := range args {
@@ -206,7 +215,7 @@ func reportUpdate(outcome updater.Outcome) {
 	// Anything else (a check that failed, a download that missed its budget) is silent by design.
 }
 
-// updateCmd is the explicit door: `skmr update [--check]`.
+// updateCmd is the explicit door: `skmr self update [--check]`.
 //
 // **Not throttled, and not affected by the auto-update switch.** Both exist to keep the automatic
 // path quiet; a person who typed `update` has asked.
@@ -217,7 +226,7 @@ func updateCmd(ctx context.Context, args []string) error {
 		case "--check":
 			checkOnly = true
 		default:
-			return unknownFlag("update", arg)
+			return unknownFlag("self update", arg)
 		}
 	}
 	base := updateBase()

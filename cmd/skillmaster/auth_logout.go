@@ -28,7 +28,7 @@ import (
 // that the next command depends on; a server that is down changes what is said, not what is done.
 func logout(args []string) error {
 	if len(args) > 0 {
-		return usagef("logout 不带参数。%s", usageAt("logout"))
+		return usagef("auth logout 不带参数。%s", usageAt("auth logout"))
 	}
 	server := config.Server()
 	store, _ := openStore(server)
@@ -108,7 +108,7 @@ func whereToRevoke(c credentials.Credentials) string {
 // not worth testing here.
 //
 // The 5-second budget is this command's own, not the API package's two minutes: a person who typed
-// `skmr logout` is leaving, and a server that cannot answer quickly is the "still there" case A13
+// `skmr auth logout` is leaving, and a server that cannot answer quickly is the "still there" case A13
 // describes, not a reason to hold the terminal.
 func logoutWithServer(store credentials.EnvStore, server string, httpClient *http.Client) error {
 	// **Read before deleting, because afterwards neither question can be answered.** Whether this
@@ -159,7 +159,7 @@ func logoutWithServer(store credentials.EnvStore, server string, httpClient *htt
 	}
 
 	if err := store.Clear(); err != nil {
-		return fmt.Errorf("清除本地凭据：%w（如果是在 agent 沙箱里，在你自己的终端再跑一次 skmr logout）", err)
+		return fmt.Errorf("清除本地凭据：%w（如果是在 agent 沙箱里，在你自己的终端再跑一次 skmr auth logout）", err)
 	}
 	if hadStored {
 		fmt.Printf("已清除本地凭据（%s）。\n", store.Where())

@@ -1084,7 +1084,7 @@ func TestTheSevenReadCommandsFailFastWithoutCredentials(t *testing.T) {
 		if status == 0 || stdout != "" {
 			t.Errorf("%v: status=%d stdout=%q", args, status, stdout)
 		}
-		if !strings.Contains(stderr, "skmr login") || !strings.Contains(stderr, "--no-login") {
+		if !strings.Contains(stderr, "skmr auth login") || !strings.Contains(stderr, "--no-login") {
 			t.Errorf("%v does not point at the login:\n%s", args, stderr)
 		}
 	}

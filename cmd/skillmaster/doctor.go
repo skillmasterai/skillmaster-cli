@@ -164,78 +164,39 @@ func doctorCmd(ctx context.Context, args []string) error {
 	return nil
 }
 
-// reportRuleState prints the state of the files this machine recorded, and no path or content.
+// reportRuleState prints which clients this machine has and whether they carry the current rule,
+// with no path and no content.
 //
-// **It does not read the internal default table.** That table is for the account-level report only
-// (ADR 0242 §5): printing a "default location" line here would be the CLI telling a person — and an
-// agent reading the output — where to look, which is exactly what the table must not become.
+// **It reads the same detection the report does** (ADR 0249): the two answers must agree, and the
+// "recorded files" view went with the ledger.
 func reportRuleState(dir string, report func(name, state, detail string)) {
-	st, _, stateErr := rule.LoadState(dir)
-	// A refusal is reported whatever the records say: it is the person's answer, and the files are
-	// allowed to be missing afterwards without the CLI asking again.
+	st, _, stateErr := rule.LoadLocalState(dir)
 	if stateErr == nil && st.Declined {
-		report("守则", "信息", "已拒绝安装（skmr install --decline）；重新安装用 skmr install --file <路径> --yes")
+		report("守则", "信息", "已拒绝守则更新（skmr self rule decline）；要重新写：skmr self rule print，先问用户")
 		return
 	}
-	statuses, err := rule.Check(dir)
-	switch {
-	case err != nil:
-		report("守则", "失败", err.Error())
-	case len(statuses) == 0:
-		report("守则", "注意", "没有安装记录；用 skmr install --file <路径> --yes 写一份")
-	default:
-		present, absent, modified, legacy, unmanaged, ignored, leftover := 0, 0, 0, 0, 0, 0, 0
-		for _, st := range statuses {
-			switch st.State {
-			case "present":
-				present++
-				if st.Detail != "" {
-					leftover++
-				}
-			case "legacy":
-				legacy++
-			case "unmanaged":
-				unmanaged++
-			case "ignored":
-				ignored++
-			case "absent":
-				absent++
-			default:
-				modified++
-			}
-		}
-		detail := fmt.Sprintf("已记录 %d 个文件：已安装 %d、不见了 %d、被改过 %d", len(statuses), present, absent, modified)
-		if leftover > 0 {
-			detail += fmt.Sprintf("、已安装但旁边有旧段 %d（skmr install --file <路径> --yes 清掉）", leftover)
-		}
-		if ignored > 0 {
-			detail += fmt.Sprintf("、读不到 %d（.mdc 缺 frontmatter，Cursor 会忽略）", ignored)
-		}
-		if legacy > 0 {
-			detail += fmt.Sprintf("、旧版 %d（下一次会写文件的命令会替换）", legacy)
-		}
-		if unmanaged > 0 {
-			detail += fmt.Sprintf("、不管 %d（项目级或符号链接）", unmanaged)
-		}
-		switch {
-		// **Two rule sets is not ok.** The line already says it, and the status has to agree: with
-		// the agent possibly reading both, a green 「守则 ok」 is the message that sends nobody.
-		case absent+modified+leftover > 0:
-			if absent+modified > 0 {
-				detail += "；重写用 skmr install --file <路径> --yes"
-			}
-			if ignored > 0 {
-				detail += "；缺 frontmatter 的那份先 skmr prompt print 再补写"
-			}
-			report("守则", "注意", detail)
-		case ignored > 0:
-			// **`install --file` alone would write the same ignored bytes again.** The missing piece
-			// is the frontmatter, and that has to come from the person or the agent.
-			report("守则", "注意", detail+"；先 skmr prompt print，把守则正文连同 frontmatter 写回同一个文件，再 skmr install --file <路径> --yes 登记")
-		default:
-			report("守则", "ok", detail)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		report("守则", "注意", "读不到用户主目录，没法检查默认位置")
+		return
+	}
+	detections := rule.Detect(home)
+	if len(detections) == 0 {
+		report("守则", "注意", "没有检测到已知客户端的全局记忆文件；让 Agent 先问用户，再取 skmr self rule print 写进它自己的文件")
+		return
+	}
+	present := 0
+	for _, detection := range detections {
+		if detection.Present {
+			present++
 		}
 	}
+	detail := fmt.Sprintf("检测到 %d 个客户端：%d 个有当前守则", len(detections), present)
+	if present == len(detections) {
+		report("守则", "ok", detail)
+		return
+	}
+	report("守则", "注意", detail+"；让 Agent 先问用户，再取 skmr self rule print 写进它自己的文件，用 skmr self rule check <路径> 回读")
 }
 
 // parseDoctorArgs reads the three flags --fix takes. `--undo` and `--dry-run` only mean something
@@ -329,12 +290,12 @@ func doctorFix(undo, dryRun bool) error {
 	}
 	if failed > 0 {
 		if !undo {
-			fmt.Println("在你自己的终端里跑一次：skmr doctor --fix（沙箱里通常写不了这些配置文件）")
+			fmt.Println("在你自己的终端里跑一次：skmr self doctor --fix（沙箱里通常写不了这些配置文件）")
 		}
 		return fixFailure(failed)
 	}
 	if !undo && !dryRun && anyChanged(changes) {
-		fmt.Println("重启这些客户端后生效。要撤销：skmr doctor --fix --undo")
+		fmt.Println("重启这些客户端后生效。要撤销：skmr self doctor --fix --undo")
 	}
 	return nil
 }

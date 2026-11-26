@@ -15,7 +15,7 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
 )
 
-// aLoginCredential is the shape `skmr login` writes: a name, a date, scopes, and the saved-at stamp
+// aLoginCredential is the shape `skmr auth login` writes: a name, a date, scopes, and the saved-at stamp
 // that tells it apart from the leftovers of older logins (`auth.LeftoverOf`).
 func aLoginCredential() *stubStore {
 	return &stubStore{found: true, creds: credentials.Credentials{

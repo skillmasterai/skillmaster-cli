@@ -363,7 +363,7 @@ func (j *Job) Release() string { return j.release.Raw }
 // AcquireLock takes the machine-wide update lock without waiting. `ok == false` means another
 // skmr is updating; that is not an error.
 //
-// Exported because `skmr update` takes the same lock: without it, a scripted update and an
+// Exported because `skmr self update` takes the same lock: without it, a scripted update and an
 // automatic one can both stage and rename (the audit's finding 9).
 func AcquireLock(dir string) (func(), bool, error) { return acquireLock(dir) }
 

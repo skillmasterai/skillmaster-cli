@@ -44,12 +44,12 @@ func startup(ctx context.Context, args []string) error {
 		// quietly: in a sandbox that would be ten minutes of silence on a URL nobody has seen.
 		if sandbox.Detect().Sandboxed {
 			return &credentialError{message: fmt.Sprintf(
-				"本机没有凭据，startup 不会假装成功。先运行 skmr login 登录或注册，"+
+				"本机没有凭据，startup 不会假装成功。先运行 skmr auth login 登录或注册，"+
 					"把打印的链接在任意浏览器里打开并批准；无人值守时，把一把在控制台签发的 API key "+
 					"放进 %s。", config.ApiKeyEnv)}
 		}
 		return &credentialError{message: fmt.Sprintf(
-			"本机没有凭据，startup 不会假装成功。运行 skmr login 登录或注册，"+
+			"本机没有凭据，startup 不会假装成功。运行 skmr auth login 登录或注册，"+
 				"把打印的链接在任意浏览器里打开并批准；会话里没有浏览器也一样，"+
 				"无人值守时把一把在控制台签发的 API key 放进 %s。", config.ApiKeyEnv)}
 	}

@@ -8,7 +8,7 @@
       "page": "account/credentials.md",
       "must": [
         "SKILLMASTER_API_KEY",
-        "skmr login"
+        "skmr auth login"
       ]
     },
     {
@@ -47,7 +47,7 @@
       "prompt": "登录有哪几种方式？我在一台没有浏览器的服务器上，怎么让它有凭据？",
       "page": "account/sign-in.md",
       "must": [
-        "skmr login",
+        "skmr auth login",
         "SKILLMASTER_API_KEY"
       ]
     },
@@ -246,7 +246,7 @@
       "prompt": "怎么让 Claude Code 每次都记得先查 SkillMaster 的库？",
       "page": "start/agent.md",
       "must": [
-        "skmr prompt print",
+        "skmr self rule print",
         "CLAUDE.md"
       ]
     },
@@ -285,7 +285,7 @@
       "prompt": "命令报连不上服务端，还说被沙箱拦了，怎么排查？",
       "page": "trouble/env.md",
       "must": [
-        "skmr doctor"
+        "skmr self doctor"
       ]
     },
     {
@@ -322,7 +322,7 @@
       "prompt": "登录报错：浏览器里没有同意；再试又说登录太频繁。",
       "page": "trouble/sign-in.md",
       "must": [
-        "skmr login"
+        "skmr auth login"
       ],
       "any": [
         "限流",

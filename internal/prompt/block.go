@@ -3,10 +3,12 @@
 // **It lives here because it describes this CLI** (ADR 0102). Shipping it with the binary makes the
 // block and the command surface one artefact.
 //
-// **This package owns the text; writing it is `internal/rule`'s job** (v94, ADR 0242). Older
-// versions wrapped it in `<!-- skillmaster:begin -->` / `<!-- skillmaster:end -->` and located it
-// again to report, update or remove it; those markers are gone. What is left here is the text, its
-// digest, and the line-ending normalisation the embedded copy needs on Windows.
+// **This package owns the text; nobody writes it** (v97, ADR 0249). `self rule print` prints the
+// block and the agent writes it into a file the person confirmed. Older versions wrapped it in
+// `<!-- skillmaster:begin -->` / `<!-- skillmaster:end -->` and located it again to report, update
+// or remove it; those markers, and the records that pointed at the files, are gone. What is left
+// here is the text, its digest, and the line-ending normalisation the embedded copy needs on
+// Windows.
 package prompt
 
 import (
@@ -36,7 +38,7 @@ func Block() []byte {
 	return out
 }
 
-// Digest names the block's content, and is the shape `prompt.json` records store.
+// Digest names the block's content.
 //
 // A content digest rather than the CLI's version: the block can stay the same across ten releases,
 // and a version number would then report ten updates.

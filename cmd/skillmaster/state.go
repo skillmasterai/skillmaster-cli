@@ -93,9 +93,9 @@ func whereYouAreLine(w whereabouts) string {
 	// the import was done, which the name sets still prevent.
 	//
 	// **Drafts come first** because publishing is the next required action once anything was
-	// uploaded. After that the line cannot know whether the rule was already written — that
-	// lives in `install.json`, not in this line — so it points at the checklist instead of guessing
-	// "写提示词" at somebody who is already done. The checklist is the authoritative answer.
+	// uploaded. After that the line cannot know whether the rule was already written — 1.10.1 keeps no
+	// record of it — so it points at the checklist instead of guessing "写提示词" at somebody who
+	// is already done. The checklist is the authoritative answer.
 	var next string
 	switch {
 	case w.drafts > 0:

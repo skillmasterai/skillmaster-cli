@@ -9,9 +9,9 @@ import (
 // defaultInstructionFiles are the global instruction files of agents this build knows by heart.
 //
 // **Reporting only** (ADR 0242): the account-level report reads these paths to answer
-// `default_rule_present`; `doctor` does not print them, and `install` never writes one unless a
-// person passed it as `--file`. Paths that have not been tested on a real installation do not
-// belong here.
+// `default_rule_present`; `doctor` does not print them, and no command writes one: the agent does,
+// after the person agrees. Paths that have not been tested on a real installation do not belong
+// here.
 //
 // A client with a config-directory environment variable resolves it here, because the documented
 // install path does too — detecting only the home default would report those machines as absent.
@@ -38,9 +38,12 @@ var defaultInstructionFiles = []struct {
 		// **A fallback, not an "or".** Once a user is bound the app reads only
 		// `user-<id>-personal/MEMORY.md`; a rule left in the root file from before login is one the
 		// agent no longer sees, and counting it would report coverage that is not there.
-		perUser := filepath.Join(root, "user-*", "MEMORY.md")
-		if matched, _ := filepath.Glob(perUser); len(matched) > 0 {
-			return []string{perUser}, ""
+		//
+		// **Bound is "a user directory exists", not "a MEMORY.md exists in it".** A login that has
+		// not written its memory file yet still reads only the user file; falling back to the root
+		// then is exactly the false coverage ADR 0249 removes.
+		if userDirs, _ := filepath.Glob(filepath.Join(root, "user-*")); anyDirectory(userDirs) {
+			return []string{filepath.Join(root, "user-*", "MEMORY.md")}, ""
 		}
 		return []string{filepath.Join(root, "MEMORY.md")}, ""
 	}},
@@ -70,37 +73,13 @@ func codexHome(home string) string {
 	return filepath.Join(home, ".codex")
 }
 
-// DefaultPresent reports whether any known default instruction file carries the current rule.
-//
-// known is false when the machine has none of the files: "no file to look at" is not the same fact
-// as "the rule is absent". The report's `default_rule_present` is a required boolean on the wire,
-// so it carries false either way; what keeps that from reading as "checked and absent" is the row
-// around it (see `reportRule`, which pairs it with a null `agent_rule_present` on a machine with no
-// record). `known` stays in the signature because that distinction is real here even when the wire
-// cannot take it.
-func DefaultPresent(home string) (present, known bool) {
-	for _, entry := range defaultInstructionFiles {
-		candidates, override := entry.Paths(home)
-		var paths []string
-		for _, candidate := range candidates {
-			matched, _ := filepath.Glob(candidate)
-			paths = append(paths, matched...)
-		}
-		if override != "" {
-			if _, err := os.Stat(override); err == nil {
-				paths = []string{override}
-			}
-		}
-		for _, path := range paths {
-			known = true
-			blob, err := os.ReadFile(path)
-			// **A Cursor rule file the editor ignores is not coverage here either.** `FileHasRule`
-			// and `Check` already refuse to count it; the default-path answer must agree, or one
-			// report row says "present at the default path" and "not installed" about one file.
-			if err == nil && containsBlock(blob) && mdcNotice(path, blob) == "" {
-				return true, true
-			}
+// anyDirectory reports whether at least one match is a directory. A stray `user-notes` file beside
+// the config directory must not mean "a user is bound".
+func anyDirectory(paths []string) bool {
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return true
 		}
 	}
-	return false, known
+	return false
 }

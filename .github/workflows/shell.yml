@@ -31,6 +31,15 @@ jobs:
       - name: sh -n over the installer
         run: sh -n install/install.sh
 
+      - name: The installers never teach a removed command
+        run: |
+          # **The last lines a new user reads are these.** v97 removed `skmr install`; an installer
+          # that still prints it hands every first-time user two commands that answer exit 2.
+          if grep -nE '" (install|prompt print)( |$)|skmr (install|prompt print)( |$)' install/install.sh install/install.ps1; then
+            echo "::error::an installer still prints the removed 'skmr install' command"
+            exit 1
+          fi
+
       - name: The Windows installer starts with a UTF-8 BOM
         run: |
           # **The parser below cannot see this one.** It runs under pwsh 7, which assumes UTF-8

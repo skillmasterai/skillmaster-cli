@@ -102,7 +102,8 @@ var dispatchers = map[string]string{
 	"notificationsVerb": "notifications ",
 	"secretVerb":        "secret ",
 	"feedbackVerb":      "feedback ",
-	"promptVerb":        "prompt ",
+	"selfCmd":           "self ",
+	"selfRule":          "self rule ",
 }
 
 // packageGraph is what one pass over the package's non-test source yields.

@@ -518,7 +518,7 @@ func referenceTarget(candidate string) string {
 	return target
 }
 
-// looksLikePath keeps ordinary prose code spans out: `skmr login` is a command, not a file.
+// looksLikePath keeps ordinary prose code spans out: `skmr auth login` is a command, not a file.
 func looksLikePath(span string) bool {
 	if strings.ContainsAny(span, " \t") {
 		return false

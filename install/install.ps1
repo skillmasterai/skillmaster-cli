@@ -124,7 +124,7 @@ try {
     # In-place copy is not atomic: killing it midway can leave a truncated skmr.exe with no backup,
     # so the failure message below names the install command as the way to redo it.
     # The staged + Replace/Move form is a fallback for a failed copy (a running exe cannot be
-    # replaced this way either — `skmr update` has a helper for that case, this installer does not).
+    # replaced this way either — `skmr self update` has a helper for that case, this installer does not).
     # Staged inside the install directory, not in %TEMP%: `File.Replace` wraps ReplaceFile, which
     # fails with ERROR_NOT_SAME_DEVICE across volumes.
     # **The archive's entry is `skmr.exe`** (ADR 0113 决定 2), so this is a plain copy.
@@ -221,14 +221,22 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say '不想自动更新：在 PowerShell profile 里设 $env:SKILLMASTER_AUTO_UPDATE=0。'
     Say ''
     Say '可选：如果想让 SkillMaster AI 在这些 AI 工具里少弹窗，先看会改什么：'
-    Say ('  & "' + $target + '" doctor --fix --dry-run')
-    Say ('确认后再运行 & "' + $target + '" doctor --fix；是否运行由你决定，这一步不会自动执行。')
+    Say ('  & "' + $target + '" self doctor --fix --dry-run')
+    Say ('确认后再运行 & "' + $target + '" self doctor --fix；是否运行由你决定，这一步不会自动执行。')
+    Say ('以后想撤回条目：& "' + $target + '" self doctor --fix --undo')
+    Say '（--undo 只删条目，不还原为放行打开的开关；那些开关要去各工具自己的设置里关。）'
     Say '然后确认登录：'
     Say ('  & "' + $target + '" auth status')
-    Say '已登录后，把守则写进你的 Agent：先问它「你的全局指令文件在哪」，再运行'
-    Say ('  & "' + $target + '" install --file <路径> --agent <Agent 名，如 claude-code> --yes')
-    Say ('  & "' + $target + '" install --check')
-    Say ('新人引导（可选）：& "' + $target + '" startup')
+    Say '  退出码 1 是没登录，运行下面这条，把打印的链接交给用户点批准；退出码 4 看它打印的原因：登录过期/被撤销就重新登录，API key 写错就改对或去掉它：'
+    Say ('  & "' + $target + '" auth login')
+    Say '登录后，把守则写进 Agent 的全局记忆文件：先问用户这个文件在哪，再运行'
+    Say ('  & "' + $target + '" self rule print')
+    Say '这段守则让每个新会话先查库；写之前先把正文给用户看——不是注入。'
+    Say '把正文写进那个文件（先备份）；Cursor 的 .mdc 先写好 frontmatter，写完让用户重载窗口，项目要在主目录下。'
+    Say ('  回读：& "' + $target + '" self rule check <路径>    # 要看到「当前」且没有旧段')
+    Say '新人引导：必须问用户要不要走（约 10 分钟），不要替用户决定；要的话给他这句话，让他新开会话粘：'
+    Say '  带我走一遍 SkillMaster AI 的新人引导'
+    Say '  （引导在新会话里走；当前会话不用跑 startup。）'
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } finally {
     # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it

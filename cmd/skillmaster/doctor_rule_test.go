@@ -19,14 +19,36 @@ func ruleLines(dir string) []ruleLine {
 	return out
 }
 
-func TestDoctorRuleStateIsNotOkWhenTheRuleIsGone(t *testing.T) {
+// **No client file, no green line.** A machine whose agent keeps its memory somewhere this build
+// does not know is not a machine with the rule; the line says what to do instead of guessing
+// (ADR 0249).
+func TestDoctorRuleStateIsNotOkWithoutAKnownClientFile(t *testing.T) {
 	dir := isolateConfig(t)
-	target := filepath.Join(os.Getenv("HOME"), "CLAUDE.md")
-	writeFile(t, target, "原有\n")
-	if _, err := rule.Install(dir, target, "claude-code", false); err != nil {
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("WORKBUDDY_CONFIG_DIR", "")
+	lines := ruleLines(dir)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %+v", lines)
+	}
+	if lines[0].state == "ok" {
+		t.Errorf("doctor says ok with no client file: %q", lines[0].detail)
+	}
+	if !strings.Contains(lines[0].detail, "没有检测到") {
+		t.Errorf("detail = %q, want 没有检测到", lines[0].detail)
+	}
+}
+
+// **The line describes the disk, not a record.** A client file without the current rule is the
+// state the update notice is about, and `doctor` must not call it ok.
+func TestDoctorRuleStateIsNotOkWhenTheClientFileHasNoRule(t *testing.T) {
+	dir := isolateConfig(t)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("WORKBUDDY_CONFIG_DIR", "")
+	target := filepath.Join(os.Getenv("HOME"), ".claude", "CLAUDE.md")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(target, []byte("被删掉了\n"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("原有内容\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	lines := ruleLines(dir)
@@ -34,16 +56,36 @@ func TestDoctorRuleStateIsNotOkWhenTheRuleIsGone(t *testing.T) {
 		t.Fatalf("lines = %+v", lines)
 	}
 	if lines[0].state == "ok" {
-		t.Errorf("doctor still says ok: %q", lines[0].detail)
+		t.Errorf("doctor says ok without the rule: %q", lines[0].detail)
 	}
-	if !strings.Contains(lines[0].detail, "被改过") {
-		t.Errorf("detail = %q, want 被改过", lines[0].detail)
+	if !strings.Contains(lines[0].detail, "0 个有当前守则") {
+		t.Errorf("detail = %q, want the count", lines[0].detail)
+	}
+}
+
+func TestDoctorRuleStateSaysOkWhenEveryKnownClientHasIt(t *testing.T) {
+	dir := isolateConfig(t)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("WORKBUDDY_CONFIG_DIR", "")
+	target := filepath.Join(os.Getenv("HOME"), ".claude", "CLAUDE.md")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, rule.Block(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lines := ruleLines(dir)
+	if len(lines) != 1 || lines[0].state != "ok" {
+		t.Fatalf("lines = %+v, want one ok line", lines)
+	}
+	if !strings.Contains(lines[0].detail, "1 个客户端：1 个有当前守则") {
+		t.Errorf("detail = %q", lines[0].detail)
 	}
 }
 
 func TestDoctorRuleStateSaysDeclined(t *testing.T) {
 	dir := isolateConfig(t)
-	if err := rule.SaveState(dir, rule.State{Schema: 1, Declined: true}); err != nil {
+	if err := rule.SetDeclined(dir, true); err != nil {
 		t.Fatal(err)
 	}
 	lines := ruleLines(dir)
@@ -54,5 +96,27 @@ func TestDoctorRuleStateSaysDeclined(t *testing.T) {
 	// a refusal the CLI obeyed must not read as a broken CLI.
 	if lines[0].state != "信息" {
 		t.Errorf("state = %q, want 信息", lines[0].state)
+	}
+}
+
+// A Cursor rule file without frontmatter is read by nothing, so detection must not count it
+// (v94's `FileHasRule` semantics, kept).
+func TestDoctorRuleStateDoesNotCountAnIgnoredCursorFile(t *testing.T) {
+	dir := isolateConfig(t)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("WORKBUDDY_CONFIG_DIR", "")
+	target := filepath.Join(os.Getenv("HOME"), ".cursor", "rules", "skillmaster.mdc")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, rule.Block(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lines := ruleLines(dir)
+	if len(lines) != 1 || lines[0].state == "ok" {
+		t.Fatalf("lines = %+v, want a non-ok line", lines)
+	}
+	if !strings.Contains(lines[0].detail, "0 个有当前守则") {
+		t.Errorf("detail = %q", lines[0].detail)
 	}
 }

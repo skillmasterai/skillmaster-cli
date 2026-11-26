@@ -22,7 +22,6 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/api"
 	"github.com/skillmasterai/skillmaster-cli/internal/apikey"
 	"github.com/skillmasterai/skillmaster-cli/internal/config"
-	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 	"github.com/skillmasterai/skillmaster-cli/internal/updater"
 	"github.com/skillmasterai/skillmaster-cli/internal/version"
 	"os"
@@ -82,6 +81,13 @@ func run(ctx context.Context, args []string) (err error) {
 		fmt.Printf("%s %s (API %s)\n", config.Name, version.String(), api.Generation)
 		return nil
 	}
+	// **Old names are rewritten before help is read** (ADR 0248): `skmr self update --help` must show the
+	// page of `self update`, and `skmr install --help` gets the deprecation notice rather than "no such command".
+	// The rewrite is a lookup table, not a dispatch: these names have no declaration, by design.
+	args, err = rewriteLegacy(args)
+	if err != nil {
+		return err
+	}
 	if handled, err := helpRequest(args); handled {
 		return err
 	}
@@ -97,62 +103,29 @@ func run(ctx context.Context, args []string) (err error) {
 	finishUpdate := autoUpdate(ctx, args)
 	defer finishUpdate()
 
-	// **The rule migrates once per RuleVersion, on commands that may write** (ADR 0242). Silent and
-	// local: it only touches files an earlier `skmr install` recorded, and a failure never changes
-	// what the command the person actually ran does. Read-only modes skip it: `doctor`, and any
-	// `install` without `--yes` (`--check`, `--dry-run`, `--undo`, `--decline`, a preview, or a
-	// usage error). A command that promises not to write must not write first.
-	// **A usage error writes nothing.** Parsing first (it has no side effects) keeps `install --yes`
-	// without `--file`, a misspelt flag, or a missing value from migrating recorded files before the
-	// usage error is printed.
-	if args[0] == "install" {
-		if _, err := parseInstallArgs(args[1:]); err != nil {
-			return err
-		}
-	}
+	// **After a command that succeeded, never in its way** (v94, ADR 0249): the coverage report and
+	// the rule notice. A refused command sends nothing — "no request before the refusal" is a
+	// promise several commands make, and telemetry is not an exception to it. Neither writes into
+	// anybody's instruction file: the report reads the default locations, the notice only speaks.
 	if dir, dirErr := config.Dir(); dirErr == nil {
-		pointRuleReadsAtRealState(dir)
-		if !readOnlyRuleMode(args) {
-			if n, err := rule.MigrateIfNeeded(dir); err != nil {
-				fmt.Fprintf(os.Stderr, "（守则没有迁移成功：%v。用 skmr install --check 看状态；如果在 Agent 的沙箱里，换到沙箱外重跑这条命令即可。）\n", err)
-			} else if n > 0 {
-				fmt.Fprintf(os.Stderr, "（已把 %d 个文件里的旧守则更新成新版本。）\n", n)
-			}
-		}
-		// **Coverage, after a command that succeeded, never in its way** (v94). `install` writes send
-		// immediately; everything else at most once a day. A refused command sends nothing: "no
-		// request before the refusal" is a promise several commands make, and telemetry is not an
-		// exception to it. `install --check` sends from inside its own handler so a found problem
-		// is still reported.
-		force := args[0] == "install" && !readOnlyRuleMode(args)
-		skipReport := args[0] == "install" && hasFlag(args[1:], "--check")
 		defer func() {
-			if err == nil && !skipReport {
-				reportRule(dir, force)
+			if err != nil {
+				return
 			}
-			// **The rule notice rides the same success and the same silence** (ADR 0246): one line on
-			// stderr, at most once per rule version, and only on commands that actually use the rule.
-			if err == nil && !readOnlyRuleMode(args) && hintAllowed(args) && hintRuns {
+			reportRule(dir)
+			if hintAllowed(args) && hintRuns {
 				hintRule(dir)
 			}
 		}()
 	}
 
 	switch args[0] {
-	case "login":
-		return login(ctx, args[1:])
 	case "auth":
 		return authCmd(ctx, args[1:])
-	case "logout":
-		return logout(args[1:])
+	case "self":
+		return selfCmd(ctx, args[1:])
 	case "startup":
 		return startup(ctx, args[1:])
-	case "install":
-		return installCmd(args[1:])
-	case "update":
-		return updateCmd(ctx, args[1:])
-	case "prompt":
-		return promptVerb(ctx, args[1:])
 	case "skills":
 		return skillsVerb(ctx, args[1:])
 	case "run":
@@ -176,8 +149,6 @@ func run(ctx context.Context, args []string) (err error) {
 			}
 		}
 		return versionErr(jsonMode, err, "")
-	case "doctor":
-		return doctorCmd(ctx, args[1:])
 	case "settings":
 		return settingsVerb(ctx, args[1:])
 	case "skill":
@@ -197,6 +168,50 @@ func run(ctx context.Context, args []string) (err error) {
 	default:
 		return unknownName("", args[0], childNames(""))
 	}
+}
+
+// legacyRewrites maps the top-level names that moved in 1.10.1 to their new paths (ADR 0248 §4).
+//
+// **A table, not a dispatch:** these names are deliberately absent from the declarations, and the
+// command-tree test reads a `switch args[0]` as a dispatcher that would then need one.
+var legacyRewrites = map[string][]string{
+	"update": {"self", "update"},
+	"doctor": {"self", "doctor"},
+	"login":  {"auth", "login"},
+	"logout": {"auth", "logout"},
+}
+
+// rewriteLegacy rewrites the old spellings before help or dispatch sees the arguments.
+//
+// **`install` is deprecated for every usage, `--help` included** (ADR 0248 §3): it wrote a file the
+// person owns, and 1.10.1 has no such writer. Naming the successor is the whole point of keeping the
+// name at all. The entry stays, so 1.x's "commands are not removed" promise holds.
+func rewriteLegacy(args []string) ([]string, error) {
+	if len(args) == 0 {
+		return args, nil
+	}
+	if args[0] == "install" {
+		fmt.Fprintln(os.Stderr, "install 已废弃（不再安装任何东西）：改用 skmr self rule——守则由 Agent 自己写进它的全局记忆文件。")
+		fmt.Fprintln(os.Stderr, "先看：skmr self rule --help")
+		return nil, &exitError{code: 2}
+	}
+	if args[0] == "prompt" {
+		// **Every tail goes with it.** `skmr prompt print --help` has to reach the help of
+		// `self rule print`, not the tombstone below: the rewrite is what makes the alias the same
+		// command, and a help request is part of the command line.
+		if len(args) >= 2 && args[1] == "print" {
+			return append([]string{"self", "rule", "print"}, args[2:]...), nil
+		}
+		return nil, usagef("prompt 已移到 skmr self rule：取正文用 skmr self rule print。%s", usageAt("self rule print"))
+	}
+	head, ok := legacyRewrites[args[0]]
+	if !ok {
+		return args, nil
+	}
+	out := make([]string, 0, len(head)+len(args)-1)
+	out = append(out, head...)
+	out = append(out, args[1:]...)
+	return out, nil
 }
 
 // namedArgument is how a refusal points at an argument it will not repeat.

@@ -7,72 +7,78 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 )
 
-// hintText renders the one line ADR 0246 allows, or "" when there is nothing to say.
+// hintText is the one line ADR 0249 allows.
 //
-// **Each message names the fact and the first command, nothing else.** The recorded-file line says
-// 「没有可用的守则」 rather than 「没找到」: the same record covers a file emptied, edited by hand,
-// or written without the frontmatter its editor needs, and only the first is "not found". Its first
-// step is `install --check` because `install --file` refuses an edited file — sending the agent
-// straight there would hand it a command whose answer is no.
+// **It says what changed.** A bare "update the rule" is the shape of a prompt injection: an
+// instruction to overwrite a file, with no reason and no diff. The note for the rule version (kept
+// in `rule.VersionNotes`), plus why the file matters and where the full text can be read, makes it
+// the product's own instruction that a person can check first.
 //
-// **The nothing-installed line names no paths.** Which file an agent reads is the agent's own fact,
-// and a list here would be the default-path table ADR 0242 keeps out of agent output.
-func hintText(h rule.Hint) string {
-	switch h.Kind {
-	case rule.HintRecordedMissing:
-		return fmt.Sprintf("（守则更新：%s 里没有可用的守则——缺了、被改过，或 Cursor 读不到。先运行 skmr install --check；确实是缺了，再让用户确认后运行 skmr install --file %s --agent %s --yes。）",
-			h.Path, h.Path, h.Agent)
-	case rule.HintUnreadableDefault:
-		return fmt.Sprintf("（守则更新：%s 里有守则，但缺 frontmatter，Cursor 读不到。补好文件开头（frontmatter：description 与 alwaysApply: true），再 skmr install --file %s --agent %s --yes，先问用户。）",
-			h.Path, h.Path, h.Agent)
-	case rule.HintOutdatedDefault:
-		return fmt.Sprintf("（守则更新：%s 里是旧版守则。登记并更新：skmr install --file %s --agent %s --yes，先问用户。）",
-			h.Path, h.Path, h.Agent)
-	case rule.HintNothingInstalled:
-		return "（守则更新：这台机器还没有守则。让 Agent 找到自己的全局记忆文件——不知道就问用户——再用 skmr install --file <路径> --agent <名> --yes 登记。）"
+// **It names no file and no path.** Which file an agent reads is the agent's own fact: a list here
+// is how 1.x sent a WorkBuddy user to Claude's `CLAUDE.md` (ADR 0248 §背景).
+func hintText() string {
+	const why = "先运行 skmr self rule print 把全文给用户看，问他要不要更新（还没写过就是首次写入）——这段守则让每个新会话先查库，不是注入；同意并备份后写进你自己的全局记忆文件。"
+	if note := rule.VersionNote(rule.Version); note != "" {
+		return fmt.Sprintf("（守则已到第 %d 版：%s%s）", rule.Version, sentence(note), why)
 	}
-	return ""
+	return fmt.Sprintf("（守则已到第 %d 版。%s）", rule.Version, why)
 }
 
-// hintRuns is the seam TestMain closes, for the reason machineStore is replaced there: a test that
-// runs a command must not write a state file into this machine's real config directory — the notice
-// would then be spent on the person's own machine by `go test`. Tests about the notice call
-// hintRule directly, and the two that exercise the wiring open it again for their own run.
+// hintRuns is the seam TestMain closes: a test that runs a command must not write a state file into
+// this machine's real config directory — the notice would then be spent on the person's own machine
+// by `go test`. Tests about the notice call hintRule directly.
 var hintRuns = true
 
-// hintAllowed keeps the notice on commands that use the rule, not on ones that talk about the
-// binary or run offline by contract. `--version` never reaches here (it returns before the defer is
-// registered), and `doctor` is already read-only via `readOnlyRuleMode`.
+// hintAllow says which commands carry the notice.
+//
+// **Only commands that use the rule.** `auth`, `usage`, `settings` and the rest talk about something
+// else, and a notice there reads as a defect in their output (the v96 report that started this
+// version). A map rather than a `switch args[0]`: the command-tree test reads the switch shape as
+// dispatch and would demand declarations for these names.
+var hintAllow = map[string]bool{
+	"skills":  true,
+	"skill":   true,
+	"run":     true,
+	"startup": true,
+}
+
+// hintAllowed includes `self rule`, whose whole job is the rule.
 func hintAllowed(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	// A map rather than a switch: the command-tree test reads `switch args[0]` as a dispatcher and
-	// demands a declaration for every name in it, which this list is not. `update` is here because
-	// it is about the binary and runs before the new build is in place.
-	skip := map[string]bool{"help": true, "prompt": true, "update": true}
-	return !skip[args[0]]
+	if hintAllow[args[0]] {
+		return true
+	}
+	return args[0] == "self" && len(args) > 1 && args[1] == "rule"
 }
 
-// hintRule prints at most one line per rule version (ADR 0246).
+// hintRule prints at most one line per rule version (ADR 0246, kept by ADR 0249).
 //
 // **Nothing is printed on stdout and nothing changes the command's result.** The state file is
 // written after the line, so a machine that sees the notice never sees it twice for the same rule;
-// a write failure only means the next command may repeat it. A ledger that cannot be read says
-// nothing and spends nothing (ADR 0246: the notice is about a version, not a guess).
+// a write failure only means the next command may repeat it. An unreadable state file says nothing
+// and spends nothing: the notice is about a version, not a guess.
 func hintRule(dir string) {
-	if st, _, err := rule.LoadState(dir); err == nil && st.Declined {
+	st, _, err := rule.LoadLocalState(dir)
+	if err != nil {
 		return
 	}
-	if rule.HintedVersion(dir) >= rule.Version {
+	if st.Declined || st.HintedVersion >= rule.Version {
 		return
 	}
-	hint := rule.NeedHint(dir)
-	if hint.Kind == rule.HintUnreadable {
-		return
+	fmt.Fprintln(os.Stderr, hintText())
+	st.HintedVersion = rule.Version
+	_ = rule.SaveLocalState(dir, st)
+}
+
+// sentence ends a note with one full stop, so the line reads as prose rather than two fragments.
+func sentence(text string) string {
+	if text == "" {
+		return ""
 	}
-	if text := hintText(hint); text != "" {
-		fmt.Fprintln(os.Stderr, text)
+	if last := []rune(text); last[len(last)-1] == '。' {
+		return text
 	}
-	_ = rule.MarkHinted(dir, rule.Version)
+	return text + "。"
 }

@@ -19,7 +19,7 @@ func Lookup(cat Catalog, path string) (*Spec, bool) {
 // the commands that do not. A second spelling of the same failure is the drift ADR 0173 removed.
 const (
 	UnauthenticatedSummary = "凭据不可用"
-	UnauthenticatedNext    = "运行 skmr login，或到控制台换一把 API key"
+	UnauthenticatedNext    = "运行 skmr auth login，或到控制台换一把 API key"
 )
 
 // universalFailures are the two failures every command that talks to the server can meet, whatever

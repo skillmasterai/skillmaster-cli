@@ -17,11 +17,12 @@ import "context"
 // of those do for a noun that has several verbs under it. Neither of them has a `noun-verb` command
 // at all: a hyphen there appears *inside* a verb name (`claude setup-token`), never as a prefix.
 //
-// **`skill`/`skills` and `version` are groups, and `login`/`logout`/`startup` deliberately stay flat.**
-// What decides is which noun a command acts on: `login`/`logout` act only on this machine — a
-// credential, a keychain entry — and `startup` starts there too (the skills directory, no credential)
-// before loading the journey from the registry; none of them is a verb under `skill`. They are also
-// not ambiguous the way a bare `list` was: there is one thing to log in to. The `version` group is the
+// **`skill`/`skills` and `version` are groups; `startup` stays flat; the credential verbs moved under
+// `auth` in 1.10.1** (ADR 0248). What decides is which noun a command acts on: `auth login`/`auth
+// logout` act only on this machine's credential, and `startup` starts there too (the skills directory,
+// no credential) before loading the journey from the registry; none of them is a verb under `skill`.
+// They are also not ambiguous the way a bare `list` was: there is one thing to log in to. The
+// `version` group is the
 // author-plane noun v6 added; it is top-level, not a verb under `skill`, because a version is an
 // object in its own right and `skill version list` would read as a list of skills.
 //

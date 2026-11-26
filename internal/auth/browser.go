@@ -25,7 +25,7 @@ func OpenBrowser(url string) error {
 //
 // **Asked by commands that would start a login on their own, which is a different moment from
 // `login` itself.** Since v68 the login no longer needs a browser on *this* machine: the link can be
-// opened anywhere, so an explicit `skmr login` prints it and waits regardless. What still depends on
+// opened anywhere, so an explicit `skmr auth login` prints it and waits regardless. What still depends on
 // the answer is a command that logs in for itself, because there nobody asked for a ten-minute wait,
 // and a machine with nothing to open the link in would sit through one for a step nobody can finish.
 // The answer comes from the same platform switch the opening uses, rather than from a second opinion

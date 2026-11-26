@@ -96,7 +96,7 @@ func Detect() Environment {
 // Snippets is the network/loopback configuration a person has to paste for this client. It is the
 // only client-specific text in the package.
 //
-// **Both names, not just the platform's.** `skmr update` downloads from the update channel, which is
+// **Both names, not just the platform's.** `skmr self update` downloads from the update channel, which is
 // a different host (ADR 0103); a list that allows only the platform leaves the update path blocked,
 // and the update path is also the recovery route when the embedded roots are out of date (ADR 0167).
 func Snippets(client Client) string {
@@ -320,7 +320,7 @@ func networkHint(host string) string {
 		// JSON fragment to paste by hand and not naming `doctor --fix` would leave the easier road
 		// hidden.
 		return fmt.Sprintf("到 %s 的连接失败。客户端沙箱的域名白名单默认通常是空的，放行它：\n%s\n"+
-			"也可以直接运行 `skmr doctor --fix` 让它写进去。", host,
+			"也可以直接运行 `skmr self doctor --fix` 让它写进去。", host,
 			snippetsFor(networkHosts(host), env.Client))
 	}
 	return fmt.Sprintf("到 %s 的连接失败。检查服务是否启动、地址是否正确、网络是否可达。", host)

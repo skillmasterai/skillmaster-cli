@@ -17,7 +17,8 @@ and put in place — `rename` on macOS / Linux, a helper that outlives the comma
 Nothing is resident: the check costs 1.5 s at most, the download gets 10 s at the end of the
 command, `SKILLMASTER_AUTO_UPDATE=0` turns it off, and `skmr update [--check]` is the
 explicit door. The rule block that gets pasted into an agent's instruction file now lives in
-`internal/prompt/block.md` and ships with the binary; `skmr prompt print` writes it out.
+`internal/prompt/block.md` and ships with the binary; `skmr prompt print` writes it out. (The
+names in this paragraph are v25's; the v97 names are in the v97 paragraph below.)
 
 **v26: the journey says what it will do before it does it, and the checklist is computed**
 ([ADR 0104](../docs/decisions/0104-the-agent-knows-where-its-user-level-file-is.md),
@@ -32,34 +33,40 @@ The block in `internal/prompt/block.md` now says: except for small talk, look in
 any task, without judging whether you are "sure enough". It carries no markers any more — it is a
 paragraph of a file the person owns, and the platform skill writes it. So `skmr prompt` keeps
 only `print`; `install`, `status`, `update` and `uninstall` retired and answer with three lines
-pointing at `prompt print` and `skmr startup` (exit 2). `prompt.json` is still read — the
-`startup` journey names the agents it remembers — but nothing writes new records. `startup` itself
+pointing at `prompt print` and `skmr startup` (exit 2). At the time `prompt.json` was still read —
+the `startup` journey named the agents it remembered — but nothing wrote new records; v97 removed
+that reader, and `self rule` replaced the group. `startup` itself
 takes no flags: `--plan` and its `--agent` / `--file` are gone, because no surface called them
 (ADR 0111).
 
-**v94: the CLI writes the rule again, into a file the person names**
-([ADR 0242](../docs/decisions/0242-the-cli-installs-and-upgrades-the-rule.md)). The entry skill is
-retired; `skmr install --file <path>` writes the 守则 into an agent's user-level instruction file,
-backing it up first and refusing to guess the path. When the rule's own `RuleVersion` changes, the
-next command that may write migrates the exact old block in the files this machine recorded
-(`doctor` and any `install` without `--yes` do not); a hand-edited rule is left alone. `skmr install --check` reads those records back, `skmr doctor` shows their state, and an
-account-scoped report carries seven booleans/enums and no path or content. The v27 paragraph above
-describes the state that version introduced, not today's behaviour.
+**v94 → v97: the rule is detected, not written** ([ADR 0242](../docs/decisions/0242-the-cli-installs-and-upgrades-the-rule.md),
+[ADR 0248](../docs/decisions/0248-the-command-tree-groups-what-manages-itself.md),
+[ADR 0249](../docs/decisions/0249-reporting-reads-updating-refreshes.md)). The entry skill stays
+retired. v94 had the CLI write the 守则 into a file the person named and keep a ledger of what it
+wrote; v97 removed the writer and the ledger — on a machine with more than one client it sent an
+agent to another client's file. What is left is read-only: `skmr self rule print` hands the text
+over, `skmr self rule check <path>` answers one file's state (current / old / edited / unreadable /
+missing / managed elsewhere), `skmr self rule decline` records "stop asking", and the coverage
+report scans the known default locations on the spot, at most once a day, sending only enums and
+booleans — no path, file name or rule text. Which file to write is the agent's call and the
+person's confirmation. v97 also groups the commands: `self update`, `self doctor`, `self rule *`
+and `auth status` / `auth login` / `auth logout`; the old top-level spellings still work and do
+not appear in `help`.
 
 ## Startup, in one paragraph
 
 `skmr startup` is the journey itself, and it takes no flags. It signs in, then loads the
 journey body from the platform (`skillmaster/skillmaster-startup`) and prints it verbatim on stdout; importing
-local skills is optional. Two things go to stderr, best effort: where the person is in the journey (ADR 0096, on its own
-20-second budget) and which agents still carry the rule (`install.json`, v94): only files that
-still contain the current block are named — a missing or out-of-scope record is left out, and with
-no such file the line is not printed at all.
+local skills is optional. Three things go to stderr, best effort: where the person is in the journey (ADR 0096, on its own
+20-second budget), which agents still carry the rule (the known default locations, v97 — only
+clients whose file contains the current block are named), and the one-line rule-version notice on
+whitelisted commands.
 When a fact cannot be read, the line is simply not printed — nothing is reported as done on a guess.
 
 **Implemented** (2026-10-07; the unattended login was removed in v3 — ADR 0038 §决定 9 — and the
 paste-a-key login in v4, [ADR 0040](../docs/decisions/0040-api-key-in-the-cli-now-the-browser-path-later.md)
-§决定 2 being superseded): §4.6's command set — `login` (a browser page and a one-time code),
-`logout`, `startup` (v17), the `skills` group: `skills list`, `skills search`; and the `skill` group for
+§决定 2 being superseded): §4.6's command set — `auth login` (a browser page and a one-time code),
+`auth logout`, `startup` (v17), the `skills` group: `skills list`, `skills search`; and the `skill` group for
 one skill: `skill invoke`, `skill ls`, `skill read`, `skill versions`, `skill submit`,
 `skill share`, `skill download` (v9), and — since v10 — `skill create`, `skill shares`,
 `skill unshare`, `skill request`, `skill open`. v6 added the
@@ -149,7 +156,7 @@ or with `--json`. It is a read, but never an anonymous one: the queue is per-cal
 `skill` and only a letter apart answered different questions — one listed skills, the other a
 version's files. Since this command surface has not shipped, those old names are removed rather than
 kept as aliases; the help advertises only `skills ...` and the renamed `skill ls` (v34 adds `find` / `stat` / `head` / `tail` beside it). The shape is
-`claude mcp list` / `gh pr list`. `login` and `logout` write and clear *this machine's* copy of a
+`claude mcp list` / `gh pr list`. `auth login` and `auth logout` write and clear *this machine's* copy of a
 credential — and since v46 a CLI login's `logout` also ends that login on the server; an API key is
 still revoked in the console. `startup` does so first and then loads the journey from the registry;
 none of them is a verb under `skill`.
@@ -276,7 +283,7 @@ list:
   revokes every authorization the account had). So a refused token is replaced once — with
   `auth.Renew`, which ignores the stored expiry because the server has just contradicted it — and the
   command retried. A second refusal means the chain is genuinely gone: `auth` deletes the credential
-  and the message names `skmr login`. **403 is deliberately not in this path**:
+  and the message names `skmr auth login`. **403 is deliberately not in this path**:
   `insufficient_scope` means the token is fine and the grant is too small, and signing in again would
   produce the same scopes.
 - **Both stores are keyed by server, and the file had to be made to match.** The keychain entry's

@@ -135,7 +135,7 @@ func writeInPlace(path string, blob []byte) error {
 	// "the old credential is still there" would be false.
 	kept := "the old credential is still there"
 	if created {
-		kept = "this login did not save; run `skmr login` again"
+		kept = "this login did not save; run `skmr auth login` again"
 	}
 	if err := file.Chmod(0o600); err != nil {
 		file.Close()
@@ -147,14 +147,14 @@ func writeInPlace(path string, blob []byte) error {
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		file.Close()
-		return fmt.Errorf("writing %s (it may now be half-written; run `skmr login` again): %w", path, err)
+		return fmt.Errorf("writing %s (it may now be half-written; run `skmr auth login` again): %w", path, err)
 	}
 	if _, err := file.Write(blob); err != nil {
 		file.Close()
-		return fmt.Errorf("writing %s (it may now be half-written; run `skmr login` again): %w", path, err)
+		return fmt.Errorf("writing %s (it may now be half-written; run `skmr auth login` again): %w", path, err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("closing %s (run `skmr login` again): %w", path, err)
+		return fmt.Errorf("closing %s (run `skmr auth login` again): %w", path, err)
 	}
 	return nil
 }
@@ -238,16 +238,16 @@ func fallbackNotice(path string) string {
 // file now, and the way back to the keychain is one flag.
 func FileDefaultNotice(path string) string {
 	return fmt.Sprintf(
-		"凭据默认写在 %s（明文文件，仅本人可读）。要用系统钥匙串登录：skmr login --keyring。", path)
+		"凭据默认写在 %s（明文文件，仅本人可读）。要用系统钥匙串登录：skmr auth login --keyring。", path)
 }
 
 // KeyringFallbackNotice is the sentence for `login --keyring` when the keychain refused and the
 // file took the credential. Reusing FileDefaultNotice there would say the default is a file and
 // recommend `--keyring` — the flag that just failed.
 func KeyringFallbackNotice(path, reason string) string {
-	next := "在沙箱外再跑一次 skmr login --keyring"
+	next := "在沙箱外再跑一次 skmr auth login --keyring"
 	if strings.Contains(reason, "超时") {
-		next = "解锁钥匙串（或在机器前批准）后再跑一次 skmr login --keyring"
+		next = "解锁钥匙串（或在机器前批准）后再跑一次 skmr auth login --keyring"
 	}
 	return fmt.Sprintf(
 		"系统钥匙串没写进去，这次凭据存到了 %s（明文文件，仅本人可读）。要放进钥匙串：%s。", path, next)

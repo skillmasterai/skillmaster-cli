@@ -65,7 +65,7 @@ var feedbackSpecs = []*help.Spec{
 		},
 		Args: []help.Arg{},
 		Output: "不带 --consent 只预览，不发送，退出码 1；带 --consent 才提交并打印回执。" +
-			"附件不会被自动扫描。上限 5 个；图片≤10 MiB、视频≤50 MiB、合计≤100 MiB。",
+			"附件不自动扫描。上限 5 个；图片≤10 MiB、视频≤50 MiB、合计≤100 MiB。",
 		JSONFields: []string{"receipt", "created_at", "attachments"},
 		Failures: []help.Failure{
 			{Code: "feedback_sensitive", Summary: "内容可能有个人信息",

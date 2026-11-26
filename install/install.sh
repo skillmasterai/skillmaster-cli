@@ -153,9 +153,9 @@ say ""
 # --- 8. Offer to configure the agent sandboxes ------------------------------
 #
 # **The installer prints; it never reads a terminal.** A consent prompt on `/dev/tty` cannot be
-# answered here, and a prompt nobody sees is worse than a sentence. Whether to run `doctor --fix`
+# answered here, and a prompt nobody sees is worse than a sentence. Whether to run `self doctor --fix`
 # is the user's decision; a person running it gives consent by running it. The keys, paths and
-# backups stay in `skmr doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can
+# backups stay in `skmr self doctor --fix` (ADR 0186). No `/dev/tty`, no `[Y/n]`, and a failed read can
 # never be taken as "yes".
 #
 # **Only print this when there is something to configure.** A terminal-only user with none of these
@@ -186,11 +186,11 @@ print_sandbox_step() {
   say "这一步不会自动执行；是否执行由你决定，并且请在你自己的终端里运行。"
   say ""
   say "先看会改什么："
-  say "  \"$INSTALL_DIR/skmr\" doctor --fix --dry-run"
+  say "  \"$INSTALL_DIR/skmr\" self doctor --fix --dry-run"
   say "确认后再运行："
-  say "  \"$INSTALL_DIR/skmr\" doctor --fix"
+  say "  \"$INSTALL_DIR/skmr\" self doctor --fix"
   say "以后想撤回条目："
-  say "  \"$INSTALL_DIR/skmr\" doctor --fix --undo"
+  say "  \"$INSTALL_DIR/skmr\" self doctor --fix --undo"
   say "（为放行打开的开关不会还原，输出也会说明；Codex 与 Gemini 的例外也以 --dry-run 的输出为准。）"
 }
 
@@ -199,7 +199,7 @@ if has_clients; then
 else
   say ""
   say "没有检测到带沙箱配置的 AI 工具（Claude Code、WorkBuddy、Codex 等）。"
-  say "如果你用的是 Cline、Aider 这类，运行 \"$INSTALL_DIR/skmr\" doctor --fix 会打印替代做法。"
+  say "如果你用的是 Cline、Aider 这类，运行 \"$INSTALL_DIR/skmr\" self doctor --fix 会打印替代做法。"
 fi
 
 say ""
@@ -209,8 +209,13 @@ say "不想自动更新：在 shell 配置里设 SKILLMASTER_AUTO_UPDATE=0。"
 say ""
 say "下一步："
 say "  \"$INSTALL_DIR/skmr\" auth status"
-say "已登录后，把守则写进你的 Agent：先问它「你的全局指令文件在哪」，再运行"
-say "  \"$INSTALL_DIR/skmr\" install --file <路径> --agent <Agent 名，如 claude-code> --yes"
-say "  \"$INSTALL_DIR/skmr\" install --check"
-say "新人引导（可选）：\"$INSTALL_DIR/skmr\" startup"
+say "  退出码 1 是没登录，运行 \"$INSTALL_DIR/skmr\" auth login，把打印的链接交给用户点批准；退出码 4 看它打印的原因：登录过期/被撤销就重新登录，API key 写错就改对或去掉它。"
+say "登录后，把守则写进 Agent 的全局记忆文件：先问用户这个文件在哪，再运行"
+say "  \"$INSTALL_DIR/skmr\" self rule print"
+say "  这段守则让每个新会话先查库；写之前先把正文给用户看——不是注入。"
+say "  把正文写进那个文件（先备份）；Cursor 的 .mdc 先写好 frontmatter，写完让用户重载窗口，项目要在主目录下。"
+say "  回读：\"$INSTALL_DIR/skmr\" self rule check <路径>    # 要看到「当前」且没有旧段"
+say "新人引导：必须问用户要不要走（约 10 分钟），不要替用户决定；要的话给他这句话，让他新开会话粘："
+say "  带我走一遍 SkillMaster AI 的新人引导"
+say "  （引导在新会话里走；当前会话不用跑 startup。）"
 say "云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。"
