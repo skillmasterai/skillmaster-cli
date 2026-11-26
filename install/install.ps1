@@ -238,6 +238,6 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say '  带我走一遍 SkillMaster AI 的新人引导'
     Say '  （引导在新会话里走；当前会话不用跑 startup。）'
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
-}
+} catch { throw }
 # **No cleanup here** (ADR 0250): deleting $tmp or a left-over $staged is a file delete, and a
 # sandbox stops to ask about it. They stay in place; the OS clears its temp directory.
