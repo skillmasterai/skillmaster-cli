@@ -141,7 +141,7 @@ CGO_ENABLED=0                      静态链接，Alpine 这类 musl 环境不�
 
 **原地写没有原子性**：`cp` / `Copy-Item` 一开始写就截断目标，进程被杀、沙箱超时或磁盘满会留下半截二进制，且没有备份；`install.sh` 的 `INT`/`TERM` trap 会提示重跑安装（`install.ps1` 没有 trap）。staged 退路只在复制返回失败时触发，覆盖不了「复制进程被杀」。
 
-**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" self doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾打印的下一步是 `auth status`；已登录后打印 `self rule print`（路径由用户或 Agent 提供，写前备份），回读用 `self rule check <路径>`，要看到「当前」；新人引导可选，运行 `skmr startup`。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `self doctor --fix`，再 `auth status`，然后同样安装守则。
+**第 8 步只有 macOS / Linux 的 `install.sh` 有**（v62，[ADR 0186](../docs/decisions/0186-the-cli-writes-a-narrow-sandbox-allowlist.md)）：检测到带沙箱配置的 AI 工具时，只打印会改什么与 `--dry-run` / `--fix` / `--undo` 命令，**不读终端、不写配置**；agent 在跑安装时先用 `AskUserQuestion` 问用户，同意后运行 `"$INSTALL_DIR/skmr" self doctor --fix`（打印时带引号，路径含空格也能直接执行），人在终端运行这条命令即视为同意。收尾顺序：**守则这一步先于登录，且不需要登录**：要求 Agent 先原样说给用户「让 Skill 随叫随到」的收益（没说过不弹选项卡），再给全文、征得同意并备份后，把 `self rule print` 的 stdout 写进用户或 Agent 指定的路径，回读用 `self rule check <路径>`，要看到「当前」；选「先不用」则运行 `self rule decline`。之后打印 `auth status`；退出码 1 时运行 `auth login`，把链接交给用户批准。新人引导可选，运行 `skmr startup`。Windows 的 `install.ps1` 暂不做第 8 步，装完用它的绝对路径手动跑 `self doctor --fix`，再走同样的守则步骤与 `auth status`。
 
 **用法**：
 

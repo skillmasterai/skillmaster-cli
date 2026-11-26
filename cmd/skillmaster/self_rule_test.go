@@ -65,6 +65,63 @@ func TestTheDeprecatedRuleCommandsExplainThemselves(t *testing.T) {
 	}
 }
 
+// **The payload is byte-for-byte the block, even on a machine that has never seen the notice.** The
+// notice lives on other commands; `self rule print` stdout is what an agent writes into the
+// person's global file, so nothing else may share it.
+func TestSelfRulePrintWritesOnlyTheBlock(t *testing.T) {
+	isolateConfig(t)
+	hintRuns = true
+	t.Cleanup(func() { hintRuns = false })
+	stdout, stderr, status := runCaptured(t, "self", "rule", "print")
+	if status != 0 {
+		t.Fatalf("status = %d, stderr = %q", status, stderr)
+	}
+	if stdout != string(rule.Block()) {
+		t.Errorf("stdout = %q, want the block", stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want empty", stderr)
+	}
+}
+
+// **An old or edited block gets the reason to update.** The ordinary notice is off for the group;
+// this is where the agent is already looking at a file that needs the new text.
+func TestRuleCheckExplainsWhatChangedForAnOldBlock(t *testing.T) {
+	isolateConfig(t)
+	path := filepath.Join(os.Getenv("HOME"), "CLAUDE.md")
+	edited := strings.Replace(string(rule.Block()), "闲聊", "其他闲聊", 1)
+	if err := os.WriteFile(path, []byte("前文\n"+edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, status := runCaptured(t, "self", "rule", "check", path)
+	if status != 1 {
+		t.Fatalf("status = %d, stdout = %q", status, stdout)
+	}
+	if !strings.Contains(stdout, "被改过") {
+		t.Errorf("stdout = %q, want 被改过", stdout)
+	}
+	if note := rule.VersionNote(rule.Version); note == "" || !strings.Contains(stderr, note) {
+		t.Errorf("stderr = %q, want this version's note %q", stderr, note)
+	}
+}
+
+// **A current file gets no version note.** The note belongs to a file that needs the new text; a
+// check that always printed it would teach agents to ignore it.
+func TestRuleCheckIsSilentOnACurrentFile(t *testing.T) {
+	isolateConfig(t)
+	path := filepath.Join(os.Getenv("HOME"), "CLAUDE.md")
+	if err := os.WriteFile(path, rule.Block(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, status := runCaptured(t, "self", "rule", "check", path)
+	if status != 0 || !strings.Contains(stdout, "当前") {
+		t.Fatalf("status = %d, stdout = %q", status, stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want empty for a current file", stderr)
+	}
+}
+
 // The one old spelling that survives, byte for byte: `prompt print` is the same output as
 // `self rule print`, from the same embedded file.
 func TestPromptPrintStillPrintsTheBlock(t *testing.T) {

@@ -17,11 +17,11 @@ import (
 // **It names no file and no path.** Which file an agent reads is the agent's own fact: a list here
 // is how 1.x sent a WorkBuddy user to Claude's `CLAUDE.md` (ADR 0248 §背景).
 func hintText() string {
-	const why = "先运行 skmr self rule print 把全文给用户看，问他要不要更新（还没写过就是首次写入）——这段守则让每个新会话先查库，不是注入；同意并备份后写进你自己的全局记忆文件。"
+	const why = "先运行 skmr self rule print 把全文给用户看，问他要不要更新；还没写过就是首次写入——这段守则让用户的 Skill 随叫随到，不是注入；同意并备份后写进你自己的全局记忆文件。"
 	if note := rule.VersionNote(rule.Version); note != "" {
-		return fmt.Sprintf("（守则已到第 %d 版：%s%s）", rule.Version, sentence(note), why)
+		return fmt.Sprintf("守则已到第 %d 版：%s%s", rule.Version, sentence(note), why)
 	}
-	return fmt.Sprintf("（守则已到第 %d 版。%s）", rule.Version, why)
+	return fmt.Sprintf("守则已到第 %d 版。%s", rule.Version, why)
 }
 
 // hintRuns is the seam TestMain closes: a test that runs a command must not write a state file into
@@ -31,10 +31,12 @@ var hintRuns = true
 
 // hintAllow says which commands carry the notice.
 //
-// **Only commands that use the rule.** `auth`, `usage`, `settings` and the rest talk about something
-// else, and a notice there reads as a defect in their output (the v96 report that started this
-// version). A map rather than a `switch args[0]`: the command-tree test reads the switch shape as
-// dispatch and would demand declarations for these names.
+// **Only commands that use the rule, never the commands that produce or answer for it.** The rule
+// text is written into the user's global memory file, so a command whose stdout is that text cannot
+// also put a notice on stderr: agent tools merge the two streams, and the notice ends up inside the
+// file (found on a real install, 2026-11-27). `self rule` answers for the rule by itself; a notice
+// there is redundant as well as unsafe. A map rather than a `switch args[0]`: the command-tree test
+// reads the switch shape as dispatch and would demand declarations for these names.
 var hintAllow = map[string]bool{
 	"skills":  true,
 	"skill":   true,
@@ -42,15 +44,11 @@ var hintAllow = map[string]bool{
 	"startup": true,
 }
 
-// hintAllowed includes `self rule`, whose whole job is the rule.
 func hintAllowed(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	if hintAllow[args[0]] {
-		return true
-	}
-	return args[0] == "self" && len(args) > 1 && args[1] == "rule"
+	return hintAllow[args[0]]
 }
 
 // hintRule prints at most one line per rule version (ADR 0246, kept by ADR 0249).
