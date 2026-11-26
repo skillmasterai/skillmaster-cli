@@ -30,6 +30,57 @@ func TestLocalStateRoundTrips(t *testing.T) {
 	}
 }
 
+// **The save must not replace the file.** A sandbox that allows writes but not deletes refuses a
+// rename over an existing name; the state would never persist and the notice or report would
+// repeat on every command.
+func TestSaveLocalStateOverwritesInPlace(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveLocalState(dir, LocalState{Schema: 2, HintedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(LocalStatePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveLocalState(dir, LocalState{Schema: 2, HintedVersion: 2}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(LocalStatePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Error("the save replaced the file; a sandbox that allows writes but not deletes would refuse")
+	}
+	st, _, err := LoadLocalState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.HintedVersion != 2 {
+		t.Errorf("hinted_version = %d, want 2", st.HintedVersion)
+	}
+}
+
+// **A torn in-place write is recovered, not fatal.** The next save repairs it; the cost is one
+// extra notice or report, never permanent silence.
+func TestLoadLocalStateTreatsACorruptFileAsFresh(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(LocalStatePath(dir), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, known, err := LoadLocalState(dir)
+	if err != nil || known || st.Schema != 2 {
+		t.Fatalf("state = %+v, known = %v, err = %v; want a fresh state", st, known, err)
+	}
+	if err := SaveLocalState(dir, LocalState{Schema: 2, HintedVersion: Version}); err != nil {
+		t.Fatal(err)
+	}
+	st, known, err = LoadLocalState(dir)
+	if err != nil || !known || st.HintedVersion != Version {
+		t.Errorf("state = %+v, known = %v, err = %v; want the repaired state", st, known, err)
+	}
+}
+
 // **The file is four scalars, all of them present.** A path or a file name appearing here would be
 // the ledger again, which is the thing 1.10.1 removed (ADR 0249 §决定 3). An empty `reported_at`
 // is still a key: "never reported" and "field absent" must not become two spellings of the file.

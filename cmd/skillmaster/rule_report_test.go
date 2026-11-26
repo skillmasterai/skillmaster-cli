@@ -224,9 +224,9 @@ func TestReportHonoursTheOffSwitch(t *testing.T) {
 	}
 }
 
-// **An unreadable state file reports nothing.** The throttle and the refusal are both unknown, and
-// sending on a defaulted throttle would repeat on every command.
-func TestReportSendsNothingWhenTheStateIsUnreadable(t *testing.T) {
+// **A corrupt state file is treated as a fresh machine.** Saving in place can leave a torn file;
+// one extra report repairs the throttle rather than silencing it forever.
+func TestReportTreatsACorruptStateAsFresh(t *testing.T) {
 	_, dir := isolatedMachine(t)
 	recorder := newReportServer(t)
 	if err := os.WriteFile(rule.LocalStatePath(dir), []byte("{not json"), 0o644); err != nil {
@@ -235,7 +235,14 @@ func TestReportSendsNothingWhenTheStateIsUnreadable(t *testing.T) {
 
 	reportRule(dir)
 
-	if recorder.requests != 0 {
-		t.Fatalf("requests = %d, want 0", recorder.requests)
+	if recorder.requests != 1 {
+		t.Fatalf("requests = %d, want 1", recorder.requests)
+	}
+	st, _, err := rule.LoadLocalState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ReportedAt == "" {
+		t.Error("the save did not repair reported_at")
 	}
 }

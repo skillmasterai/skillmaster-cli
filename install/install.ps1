@@ -238,10 +238,6 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say '  带我走一遍 SkillMaster AI 的新人引导'
     Say '  （引导在新会话里走；当前会话不用跑 startup。）'
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
-} finally {
-    # The staged copy lives in the install directory (it has to, for the rename to be atomic), so it
-    # is not covered by removing $tmp: a failed replace would otherwise leave it beside the old
-    # binary for good. It is only this run's own copy — the name carries a GUID.
-    if ($staged) { Remove-Item -Force -ErrorAction SilentlyContinue $staged }
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
 }
+# **No cleanup here** (ADR 0250): deleting $tmp or a left-over $staged is a file delete, and a
+# sandbox stops to ask about it. They stay in place; the OS clears its temp directory.

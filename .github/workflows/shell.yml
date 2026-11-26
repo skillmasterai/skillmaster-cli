@@ -40,6 +40,16 @@ jobs:
             exit 1
           fi
 
+      - name: The installers never delete a local file
+        run: |
+          # ADR 0250: every delete is a sandbox prompt, so the installers leave temp files in place
+          # and let the OS clear them. A cleanup line here would ask every sandboxed user to approve
+          # a delete the installer does not need.
+          if grep -nE '\brm -[rf]+|Remove-Item' install/install.sh install/install.ps1; then
+            echo "::error::an installer deletes a local file; ADR 0250 forbids the delete prompt"
+            exit 1
+          fi
+
       - name: The Windows installer starts with a UTF-8 BOM
         run: |
           # **The parser below cannot see this one.** It runs under pwsh 7, which assumes UTF-8

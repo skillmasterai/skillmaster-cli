@@ -145,15 +145,23 @@ func TestHintRuleHonoursDecline(t *testing.T) {
 	}
 }
 
-// **A state file that will not parse says nothing and spends nothing.** Marking the version would
-// keep this machine quiet for the whole rule version on the strength of a failed read.
-func TestHintRuleSpendsNothingWhenTheStateCannotBeRead(t *testing.T) {
+// **A state file that will not parse is treated as a fresh machine.** Saving in place can leave a
+// torn file; the next command prints the notice once and the save repairs it. A read error (as
+// opposed to a parse error) still says nothing.
+func TestHintRuleTreatsACorruptStateAsFresh(t *testing.T) {
 	dir := isolateConfig(t)
 	if err := os.WriteFile(rule.LocalStatePath(dir), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := captureStderr(t, func() { hintRule(dir) }); out != "" {
-		t.Errorf("an unreadable state file produced %q", out)
+	if out := captureStderr(t, func() { hintRule(dir) }); !strings.Contains(out, "skmr self rule print") {
+		t.Errorf("a corrupt state file produced %q, want the notice", out)
+	}
+	st, _, err := rule.LoadLocalState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.HintedVersion != rule.Version {
+		t.Errorf("hinted version = %d, want %d (the save should repair the file)", st.HintedVersion, rule.Version)
 	}
 }
 

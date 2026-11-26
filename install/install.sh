@@ -65,9 +65,9 @@ command -v curl >/dev/null 2>&1 || die "需要 curl（没有它下不了包）"
 # template under `$TMPDIR` (the writable one the sandbox provides) is what works.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/skillmaster-install.XXXXXX")" ||
   die "建不了临时目录：${TMPDIR:-/tmp}（如果沙箱拒绝了这次写入，请在你自己的终端里重新运行这条命令）"
-# Best effort: a sandbox may refuse deletion. Cleanup is not worth failing an install that has
-# already placed the binary, and the temp directory is the installer's own.
-trap 'rm -rf "$tmp" 2>/dev/null || true' EXIT
+# **No cleanup trap** (ADR 0250): deleting the temp directory is a file delete, and a sandbox stops
+# to ask about it. The directory stays under $TMPDIR for the OS to clear; nothing of the person's is
+# in it.
 # **In-place copy is not atomic.** If the process is killed while `cp` is writing, the installed
 # binary can be half a file with no backup. Say that instead of leaving a silent broken command.
 trap 'say "安装被中断；如果 $INSTALL_DIR/skmr 已存在，它可能不完整，请重跑安装。" >&2; exit 130' INT TERM
