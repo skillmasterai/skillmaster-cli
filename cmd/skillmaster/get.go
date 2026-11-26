@@ -151,6 +151,8 @@ func get(ctx context.Context, args []string) error {
 		return fmt.Errorf("写入 %s：%w\n（半成品留在 %s，没有删掉——确认后请自行删除。）",
 			destination, err, tempName)
 	}
+	// **The explicit replacement** (ADR 0250 §决定 3): --overwrite asks for this name to be
+	// replaced, so the rename is the action the person requested, not cleanup.
 	if err := os.Rename(tempName, destination); err != nil {
 		return fmt.Errorf("保存到 %s：%w\n（下载完成的内容留在 %s，没有删掉——确认后请自行删除。）",
 			destination, err, tempName)

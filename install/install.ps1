@@ -38,12 +38,21 @@ try {
 
 $BaseUrl = if ($env:SKILLMASTER_DL_URL) { $env:SKILLMASTER_DL_URL } else { 'https://dl.skillmasterai.com' }
 $InstallDir = if ($env:SKILLMASTER_INSTALL_DIR) { $env:SKILLMASTER_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'SkillMaster\bin' }
+# **Owned by this script.** A caller's session may have $tmp/$staged set, and strict mode would
+# make Die throw on an unset name instead of printing one line.
+$tmp = $null
+$staged = $null
 
 function Say([string]$Message) { Write-Host $Message }
 # **Console, not Write-Error.** Under `$ErrorActionPreference = 'Stop'`, Write-Error is a
 # terminating error, so the `exit 1` after it never ran and the user got a multi-line error record
 # pointing at this line instead of the one line that says what happened.
-function Die([string]$Message) { [Console]::Error.WriteLine("install: $Message"); exit 1 }
+function Die([string]$Message) {
+    [Console]::Error.WriteLine("install: $Message")
+    if ($tmp) { [Console]::Error.WriteLine("（临时文件留在 $tmp）") }
+    if ($staged) { [Console]::Error.WriteLine("（暂存文件留在 $staged）") }
+    exit 1
+}
 
 # --- 1. Pick the package -----------------------------------------------------
 
@@ -64,9 +73,13 @@ $artifact = "skillmaster_windows_$arch.zip"
 
 # --- 2. Fetch the package and the checksums ---------------------------------
 
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("skillmaster-install-" + [System.Guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $tmp | Out-Null
-$staged = $null
+# **$tmp stays null until the directory exists**, so Die never claims a leftover for a path that
+# was never created.
+$tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("skillmaster-install-" + [System.Guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $tmpDir -ErrorAction Stop | Out-Null
+    $tmp = $tmpDir
+} catch { Die "建不了临时目录：$tmpDir（如果沙箱拒绝了这次写入，请在你自己的终端里重新运行这条命令）" }
 
 try {
     Say "下载 $BaseUrl/$artifact"
@@ -132,17 +145,25 @@ try {
     try {
         Copy-Item -Path (Join-Path $tmp 'skmr.exe') -Destination $target -Force -ErrorAction Stop
     } catch {
-        $staged = Join-Path $InstallDir ('skmr.exe.new.' + [System.Guid]::NewGuid().ToString('N'))
-        try { Copy-Item -Path (Join-Path $tmp 'skmr.exe') -Destination $staged -Force -ErrorAction Stop }
-        catch { Die "复制失败：$InstallDir（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）" }
+        # $staged is named only after the copy succeeds, so a failed copy does not point at a file
+        # that was never written.
+        $candidate = Join-Path $InstallDir ('skmr.exe.new.' + [System.Guid]::NewGuid().ToString('N'))
+        try { Copy-Item -Path (Join-Path $tmp 'skmr.exe') -Destination $candidate -Force -ErrorAction Stop }
+        catch {
+            if (Test-Path $candidate) { Die "复制失败：$InstallDir（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令；写了一半的暂存文件在 $candidate）" }
+            Die "复制失败：$InstallDir（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）"
+        }
+        $staged = $candidate
         try {
             if (Test-Path $target) {
                 [System.IO.File]::Replace($staged, $target, $null)
             } else {
                 [System.IO.File]::Move($staged, $target)
             }
+            # The staged name is gone; a later failure must not point at it.
+            $staged = $null
         } catch {
-            Die "写不进 $target，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
+            Die "写不进 $target，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令（$target 也可能只写了一半）"
         }
     }
 
@@ -239,5 +260,6 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     Say '  （引导在新会话里走；当前会话不用跑 startup。）'
     Say '云端 / 远程 Agent（每开一个会话就是新环境）不在这一版的安装范围：请换一台本地电脑或本机 Agent。'
 } catch { throw }
-# **No cleanup here** (ADR 0250): deleting $tmp or a left-over $staged is a file delete, and a
-# sandbox stops to ask about it. They stay in place; the OS clears its temp directory.
+# **No cleanup here** (ADR 0250): deleting either path is a file delete, and a sandbox stops to
+# ask about it. $tmp stays in %TEMP% for the OS to clear; a failed fallback leaves $staged beside
+# the binary, and Die names it.

@@ -106,6 +106,20 @@ func TestReportSendsOneRowForEachDetectedClient(t *testing.T) {
 	}
 }
 
+// **An unreadable state file stops the report instead of guessing.** A missing throttle would send
+// on every command, and a defaulted `declined` would be a fact nobody stated.
+func TestReportStaysSilentWhenTheStateCannotBeRead(t *testing.T) {
+	_, dir := isolatedMachine(t)
+	recorder := newReportServer(t)
+	if err := os.Mkdir(filepath.Join(dir, rule.StateFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reportRule(dir)
+	if recorder.requests != 0 {
+		t.Errorf("requests = %d, want 0", recorder.requests)
+	}
+}
+
 // **A machine with no known file reports once as `unknown`.** Nothing is claimed about a client
 // that is not there; the label says the report covers none this build knows.
 func TestReportSaysUnknownWhenNoClientIsDetected(t *testing.T) {

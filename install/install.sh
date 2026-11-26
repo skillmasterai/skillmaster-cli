@@ -16,7 +16,10 @@ BASE_URL="${SKILLMASTER_DL_URL:-https://dl.skillmasterai.com}"
 # An override exists for testing and for a mirror; the default is the only address users see.
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'install: %s\n' "$*" >&2; exit 1; }
+# **Own the name.** An exported `tmp` from the caller's shell must not be reported as this run's
+# directory before mktemp has run.
+tmp=""
+die() { printf 'install: %s\n' "$*" >&2; if [ -n "${tmp:-}" ]; then printf '（临时文件留在 %s）\n' "$tmp" >&2; fi; exit 1; }
 
 # `set -u` turns a missing HOME into `install.sh: 17: HOME: parameter not set` — no `install:`
 # prefix, no hint at what to do. Agent sandboxes run this with a stripped environment, so say it.
@@ -122,11 +125,11 @@ INSTALL_DIR="$resolved"
 # refused (Linux `ETXTBSY`); outside a sandbox it is the more atomic of the two.
 if ! cp "$tmp/skmr" "$INSTALL_DIR/skmr" 2>/dev/null; then
   cp "$tmp/skmr" "$INSTALL_DIR/skmr.new" ||
-    die "复制失败：$INSTALL_DIR（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令）"
+    die "复制失败：$INSTALL_DIR（如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令；如果写下了半成品，它在 $INSTALL_DIR/skmr.new，$INSTALL_DIR/skmr 也可能只写了一半）"
   chmod 755 "$INSTALL_DIR/skmr.new" ||
-    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
+    die "改不了 $INSTALL_DIR/skmr.new 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令（暂存文件留在 $INSTALL_DIR/skmr.new）"
   mv -f "$INSTALL_DIR/skmr.new" "$INSTALL_DIR/skmr" ||
-    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"
+    die "写不进 $INSTALL_DIR/skmr，也改不了名：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令（暂存文件留在 $INSTALL_DIR/skmr.new；$INSTALL_DIR/skmr 也可能只写了一半）"
 else
   chmod 755 "$INSTALL_DIR/skmr" ||
     die "改不了 $INSTALL_DIR/skmr 的权限：如果这次执行被沙箱拒绝，请在你自己的终端里重新运行这条命令"

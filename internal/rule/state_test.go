@@ -61,6 +61,30 @@ func TestSaveLocalStateOverwritesInPlace(t *testing.T) {
 	}
 }
 
+// **An older file that was writable by others is narrowed, not left wide.** Writing in place keeps
+// the existing mode, so the save has to set 0600 itself; a sandbox that refuses chmod must not turn
+// a successful save into an error, which is why the failure is ignored.
+func TestSaveLocalStateNarrowsAnExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := LocalStatePath(dir)
+	if err := os.WriteFile(path, []byte(`{"schema":2}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveLocalState(dir, LocalState{Schema: 2, HintedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600 after the save", info.Mode().Perm())
+	}
+}
+
 // **A torn in-place write is recovered, not fatal.** The next save repairs it; the cost is one
 // extra notice or report, never permanent silence.
 func TestLoadLocalStateTreatsACorruptFileAsFresh(t *testing.T) {

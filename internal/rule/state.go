@@ -91,7 +91,12 @@ func SaveLocalState(dir string, st LocalState) error {
 	if err := os.WriteFile(path, append(blob, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0o600)
+	// **Chmod is best effort.** A new file already has 0600; an older one may be wider. A sandbox
+	// that refuses chmod must not turn a successful save into an error.
+	if info, err := os.Stat(path); err == nil && info.Mode().Perm() != 0o600 {
+		_ = os.Chmod(path, 0o600)
+	}
+	return nil
 }
 
 // ReportDue says whether the throttle has elapsed. An unreadable or unparseable timestamp counts as

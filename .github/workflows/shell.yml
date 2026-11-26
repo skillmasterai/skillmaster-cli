@@ -45,7 +45,24 @@ jobs:
           # ADR 0250: every delete is a sandbox prompt, so the installers leave temp files in place
           # and let the OS clear them. A cleanup line here would ask every sandboxed user to approve
           # a delete the installer does not need.
-          if grep -nE '\brm -[rf]+|Remove-Item' install/install.sh install/install.ps1; then
+          #
+          # **A guard that misses a spelling is worse than none**, so the pattern is proved against
+          # samples before it is turned on the scripts. Word boundaries are written out because
+          # `\b` is not portable between the GNU grep on CI and the BSD grep on a Mac; `-i` is there
+          # because PowerShell cmdlets and aliases are case-insensitive.
+          pattern='(^|[^[:alnum:]_-])(rm|rmdir|unlink|del|erase|rd|ri)([^[:alnum:]_-]|$)|Remove-Item|::Delete\(|-delete([^[:alnum:]_-]|$)'
+          for sample in 'rm "$tmp"' 'rm -rf "$tmp"' 'rmdir "$tmp"' 'unlink "$tmp"' 'del "$tmp"' \
+                        'erase "$tmp"' 'rd /s /q "%TEMP%"' 'Remove-Item $tmp -Recurse' \
+                        'remove-item $tmp' 'RI $tmp' 'DEL $tmp' '[IO.File]::Delete($p)' \
+                        'find "$tmp" -delete'; do
+            printf '%s\n' "$sample" | grep -qiE "$pattern" ||
+              { echo "::error::the delete guard misses: $sample"; exit 1; }
+          done
+          if printf '%s\n' 'form model third delete removing' | grep -qiE "$pattern"; then
+            echo "::error::the delete guard matches ordinary words"
+            exit 1
+          fi
+          if grep -niE "$pattern" install/install.sh install/install.ps1; then
             echo "::error::an installer deletes a local file; ADR 0250 forbids the delete prompt"
             exit 1
           fi

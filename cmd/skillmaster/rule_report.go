@@ -32,8 +32,9 @@ func reportRule(dir string) {
 	}
 	st, _, err := rule.LoadLocalState(dir)
 	if err != nil {
-		// An unreadable state file has no known throttle and no known refusal. Reporting anyway
-		// could send on every command, and a defaulted `declined` would be a fact nobody stated.
+		// A read error (permissions, a directory) has no known throttle and no known refusal.
+		// Reporting anyway could send on every command, and a defaulted `declined` would be a
+		// fact nobody stated. A parse error is already a fresh state.
 		return
 	}
 	now := time.Now()

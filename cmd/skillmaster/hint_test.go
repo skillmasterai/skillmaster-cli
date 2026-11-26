@@ -165,6 +165,19 @@ func TestHintRuleTreatsACorruptStateAsFresh(t *testing.T) {
 	}
 }
 
+// **A state path that cannot be read says nothing and spends nothing.** The notice is about a
+// version, not a guess; reporting a permissions problem here would put a diagnostic on every
+// command that has nothing to do with the command.
+func TestHintRuleStaysSilentWhenTheStateCannotBeRead(t *testing.T) {
+	dir := isolateConfig(t)
+	if err := os.Mkdir(rule.LocalStatePath(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out := captureStderr(t, func() { hintRule(dir) }); out != "" {
+		t.Errorf("an unreadable state file produced %q, want silence", out)
+	}
+}
+
 // The wiring, not the function: a successful command carries the line, the next one does not, and
 // the state is where the run left it.
 func TestRunPrintsTheRuleNoticeOnce(t *testing.T) {

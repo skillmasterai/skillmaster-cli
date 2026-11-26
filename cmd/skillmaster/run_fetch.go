@@ -33,8 +33,9 @@ const runMarker = ".skillmaster-run.json"
 //
 // **The contract is stored because a profile can change without the digest changing** (ADR 0222
 // 后果). It is also what lets a machine with no network recompute the same cache directory name
-// that the last online run used. `Extras` records `--with` paths so a later run can tell "already
-// here" from "needs one more file".
+// that the last online run used. `Extras` is the record of the `--with` paths at creation time,
+// informational only: whether one is already here is answered by the file's existence, and this
+// marker is never rewritten after the fetch (ADR 0250).
 type runMarkerFile struct {
 	Digest       string           `json:"digest"`
 	Rule         int              `json:"rule"`
@@ -214,14 +215,11 @@ func ensureWithFiles(ctx context.Context, base, digest, dir string, extras []str
 			return err
 		}
 	}
-	// **Record what is now here.** Best effort: the files are the fact, and the marker only saves a
-	// later run from looking them up again.
-	if marker, ok := readRunMarker(dir); ok {
-		marker.Extras = appendUnique(marker.Extras, extras...)
-		if data, err := json.Marshal(marker); err == nil {
-			_ = writeFileAtomic(filepath.Join(dir, runMarker), data, 0o644)
-		}
-	}
+	// **The marker is not rewritten.** Existence of each extra file is the hit test above, so the
+	// marker's `extras` list changes nothing; rewriting it in place would only add a window where a
+	// kill leaves a torn marker, and a torn marker turns every later run of this version into the
+	// "no cache marker, delete it yourself" error. A rename over it is a delete (ADR 0250), so the
+	// old atomic write is gone too.
 	return nil
 }
 
