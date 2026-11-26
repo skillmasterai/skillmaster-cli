@@ -84,15 +84,16 @@ var commandHelp = declarationsCatalog{
 		"rule": {
 			Name:  "rule",
 			Label: "守则安装",
-			Body: `守则安装（给 Agent）：
-  1. 先问用户写进哪个全局指令文件；给出路径前不要猜。
+			Body: `守则安装（Agent）：
+  1. 先问用户写哪个全局指令文件。
   2. 同意后：skmr install --file <路径> --agent <agent> --yes
   3. 回读：skmr install --check
-  4. CLI 写不了：prompt print 取正文，手写进同一路径，
-     再 install --file <同一路径> --yes 登记，然后 --check
-  5. 拒绝：skmr install --decline，之后不再询问
-  6. 看状态：skmr doctor
-路径由用户提供，CLI 不告诉 Agent 默认路径。
+  4. 写不了：prompt print 正文手写进去，
+     再 install --file <同一路径> --yes，--check
+  5. 拒绝：skmr install --decline，不再问
+  6. 状态：skmr doctor
+守则更新提示照做。凭据失效：Agent 自己运行 skmr login，链接交用户批准。
+路径由用户提供，CLI 不给默认路径。
 `,
 		},
 		"auth": {

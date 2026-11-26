@@ -92,6 +92,13 @@ func parseLoginArgs(args []string) (keyring bool, err error) {
 //
 // The second return value says whether this is one of them: a refusal with a code this version does
 // not know keeps the message it always had, which at least quotes the server.
+// agentRunsTheLogin is the half-sentence v96 puts after every login refusal (ADR 0247).
+//
+// **It is one constant because the same sentence now stands in the rule, `skmr help rule` and every
+// refusal**, and a phrase repeated five times from memory drifts. It is not said for a key: a key
+// refusal's way out is the console, not a login this machine can run.
+const agentRunsTheLogin = "可以让 Agent 代跑这条命令，把链接交给你批准。"
+
 func refusalMessage(err error, key bool) (string, bool) {
 	var refusal *api.Refusal
 	if !errors.As(err, &refusal) {
@@ -117,19 +124,19 @@ func refusalMessage(err error, key bool) (string, bool) {
 	switch refusal.Code {
 	case "unauthenticated":
 		return "服务端不认这份凭据：它可能已经被结束、过期，或者不是这个服务签发的。" +
-			"重新运行 skmr login 点一下就能换一份新的。", true
+			"重新运行 skmr login 点一下就能换一份新的。" + agentRunsTheLogin, true
 	case "token_idle":
 		return "这份凭据闲置太久了——这台机器有一阵子没用它。重新运行 skmr login，" +
-			"在同一台机器上点一下就换回来。", true
+			"在同一台机器上点一下就换回来。" + agentRunsTheLogin, true
 	case "token_expired":
 		// The one refusal with two answers, and both are said: coming back is what most people do,
 		// and **a key is named because this is the moment the difference between the two shapes
 		// matters** — a login does not renew, so wanting one that does means wanting the other shape.
 		return fmt.Sprintf("这份凭据已经到期（它从签发那一刻起就有上限）。重新运行 skmr login 点一下，"+
-			"或者到控制台签一把不会到期的 API key：%s", console), true
+			"或者到控制台签一把不会到期的 API key：%s。"+agentRunsTheLogin, console), true
 	case "token_revoked":
 		return "这份凭据已经被结束（在控制台的「登录设备」里退出的就是它）。" +
-			"重新运行 skmr login 点一下就换一份新的。", true
+			"重新运行 skmr login 点一下就换一份新的。" + agentRunsTheLogin, true
 	case "account_suspended":
 		return "这个账号已被停用，凭据暂时都不能用（不是这份凭据的问题）。", true
 	}
