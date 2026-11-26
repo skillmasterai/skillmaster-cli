@@ -353,7 +353,7 @@ func TestAQuestionThatIsOverSaysToStartAgain(t *testing.T) {
 			if err == nil {
 				t.Fatal("an ended question was reported as a success")
 			}
-			for _, wanted := range []string{"没有完成", "skmr login"} {
+			for _, wanted := range []string{"没有完成", "skmr auth login"} {
 				if !strings.Contains(err.Error(), wanted) {
 					t.Errorf("message = %q, want it to mention %q", err, wanted)
 				}
@@ -380,7 +380,7 @@ func TestAPollThatDoesNotMatchSaysToStartAgain(t *testing.T) {
 	if err == nil {
 		t.Fatal("a poll the server refused was reported as a success")
 	}
-	for _, wanted := range []string{"失效", "skmr login"} {
+	for _, wanted := range []string{"失效", "skmr auth login"} {
 		if !strings.Contains(err.Error(), wanted) {
 			t.Errorf("message = %q, want it to mention %q", err, wanted)
 		}

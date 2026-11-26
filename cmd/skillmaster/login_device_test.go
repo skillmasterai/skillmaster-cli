@@ -64,7 +64,7 @@ func TestARevokedLoginSaysSoAndStartsNoNewLogin(t *testing.T) {
 	if started {
 		t.Fatal("a revoked login started a new one by itself")
 	}
-	if !strings.Contains(err.Error(), "skmr login") {
+	if !strings.Contains(err.Error(), "skmr auth login") {
 		t.Fatalf("message = %q, want the command that starts a new login", err)
 	}
 }

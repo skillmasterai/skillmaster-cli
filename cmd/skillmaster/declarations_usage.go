@@ -37,7 +37,7 @@ var usageSpecs = []*help.Spec{
 			"skmr usage --days 7 --skill pdf",
 			"skmr usage demo/pdf-tools --mine",
 		},
-		Next:  "找回一条 skill 后用 skmr skill invoke <地址> 再调用",
+		Next:  "找一条 skill 后用 skmr skill invoke <地址> 调用",
 		Exits: exitsWithCredential,
 	},
 }

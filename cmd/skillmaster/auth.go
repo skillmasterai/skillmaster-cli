@@ -71,7 +71,7 @@ func parseLoginArgs(args []string) (keyring bool, err error) {
 			keyring = true
 			continue
 		}
-		return false, unknownFlag("login", arg)
+		return false, unknownFlag("auth login", arg)
 	}
 	return keyring, nil
 }
@@ -124,19 +124,19 @@ func refusalMessage(err error, key bool) (string, bool) {
 	switch refusal.Code {
 	case "unauthenticated":
 		return "服务端不认这份凭据：它可能已经被结束、过期，或者不是这个服务签发的。" +
-			"重新运行 skmr login 点一下就能换一份新的。" + agentRunsTheLogin, true
+			"重新运行 skmr auth login 点一下就能换一份新的。" + agentRunsTheLogin, true
 	case "token_idle":
-		return "这份凭据闲置太久了——这台机器有一阵子没用它。重新运行 skmr login，" +
+		return "这份凭据闲置太久了——这台机器有一阵子没用它。重新运行 skmr auth login，" +
 			"在同一台机器上点一下就换回来。" + agentRunsTheLogin, true
 	case "token_expired":
 		// The one refusal with two answers, and both are said: coming back is what most people do,
 		// and **a key is named because this is the moment the difference between the two shapes
 		// matters** — a login does not renew, so wanting one that does means wanting the other shape.
-		return fmt.Sprintf("这份凭据已经到期（它从签发那一刻起就有上限）。重新运行 skmr login 点一下，"+
+		return fmt.Sprintf("这份凭据已经到期（它从签发那一刻起就有上限）。重新运行 skmr auth login 点一下，"+
 			"或者到控制台签一把不会到期的 API key：%s。"+agentRunsTheLogin, console), true
 	case "token_revoked":
 		return "这份凭据已经被结束（在控制台的「登录设备」里退出的就是它）。" +
-			"重新运行 skmr login 点一下就换一份新的。" + agentRunsTheLogin, true
+			"重新运行 skmr auth login 点一下就换一份新的。" + agentRunsTheLogin, true
 	case "account_suspended":
 		return "这个账号已被停用，凭据暂时都不能用（不是这份凭据的问题）。", true
 	}
@@ -194,6 +194,10 @@ func authCmd(ctx context.Context, args []string) (err error) {
 	// at the help of the command that was actually typed (PRD 做 #4).
 	defer func() { err = retargetUsage(err, "auth "+args[0]) }()
 	switch args[0] {
+	case "login":
+		return login(ctx, args[1:])
+	case "logout":
+		return logout(args[1:])
 	case "status":
 		// The optional address is 做 #9's second query: the same question — "what can *this*
 		// credential do" — narrowed from the credential to one skill. Same command rather than a new
@@ -251,7 +255,7 @@ func authStatusWith(ctx context.Context, server string, store credentials.EnvSto
 		return fmt.Errorf("读取本机凭据：%w", err)
 	}
 	if !found || stored.AccessToken == "" {
-		return errors.New("本机没有凭据。跑 `skmr login` 拿一条登录链接，" +
+		return errors.New("本机没有凭据。跑 `skmr auth login` 拿一条登录链接，" +
 			"或把一把控制台签发的 API key 放进 " + config.ApiKeyEnv + "。")
 	}
 

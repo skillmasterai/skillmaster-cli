@@ -355,7 +355,7 @@ func wait(ctx context.Context, client *http.Client, server string, question star
 			// about a login than the link's holder should learn.
 			return Credential{}, loginFailed(fmt.Errorf(
 				"这次登录没有完成：链接被拒绝、已经用过，或者超过了 %s。"+
-					"重新运行 skmr login，再点一次新链接。", humanDuration(question.lifetime)))
+					"重新运行 skmr auth login，再点一次新链接。", humanDuration(question.lifetime)))
 		}
 
 		// **The last poll always happens.** A `Retry-After` from the server can be longer than what is
@@ -364,7 +364,7 @@ func wait(ctx context.Context, client *http.Client, server string, question star
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			return Credential{}, loginFailed(fmt.Errorf(
-				"等了 %s，这个链接没有被批准。重新运行 skmr login 拿一个新链接。",
+				"等了 %s，这个链接没有被批准。重新运行 skmr auth login 拿一个新链接。",
 				humanDuration(question.lifetime)))
 		}
 		wait := interval
@@ -432,7 +432,7 @@ func poll(ctx context.Context, client *http.Client, server string, question star
 		// apart would also tell somebody holding a link whether it is a real question, and which half
 		// they are missing. The sentence names the way forward rather than the cause.
 		return "", Credential{}, 0, loginFailed(errors.New("这个链接已经失效了（或者不是这次登录的）。" +
-			"重新运行 skmr login 拿一个新链接。"))
+			"重新运行 skmr auth login 拿一个新链接。"))
 	case http.StatusTooManyRequests:
 		// The header is seconds; an HTTP-date is legal but not worth assembling a clock out of.
 		// Without it, the loop waits its normal interval — the server's next answer will say the same

@@ -309,7 +309,7 @@ func runSkill(ctx context.Context, args []string) error {
 		case errors.As(runErr, &exited):
 			code = exited.ExitCode()
 		case errors.Is(runErr, exec.ErrNotFound):
-			return fmt.Errorf("找不到 %s。这个 skill 的命令要用它；装法见 skmr doctor。", resolved[0])
+			return fmt.Errorf("找不到 %s。这个 skill 的命令要用它；装法见 skmr self doctor。", resolved[0])
 		default:
 			return runErr
 		}
@@ -880,7 +880,7 @@ func recordConsent(digest string, yes bool) error {
 	}
 	if !yes {
 		return fmt.Errorf("第一次在本机执行这个版本的代码（sha256:%s）。确认后加 --yes 再来一次；"+
-			"想先看清环境就运行 skmr doctor。", cacheKey(digest))
+			"想先看清环境就运行 skmr self doctor。", cacheKey(digest))
 	}
 	if err := os.MkdirAll(filepath.Dir(marker), 0o700); err != nil {
 		return fmt.Errorf("记录执行确认：%w", err)

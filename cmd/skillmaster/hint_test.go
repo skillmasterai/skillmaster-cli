@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,14 +22,14 @@ func init() { hintRuns = false }
 // reads, and the refusal it gets when the credential is gone. **A refusal without the sentence is
 // the path the person was sent down before this version** — "run it again", from the person's side.
 func TestTheAgentIsToldToRunTheLoginItself(t *testing.T) {
-	if !strings.Contains(string(rule.Block()), "自己运行 `skmr login`") {
+	if !strings.Contains(string(rule.Block()), "自己运行 `skmr auth login`") {
 		t.Error("the rule block does not tell the agent to run the login itself")
 	}
 	topic, ok := commandHelp.Topic("rule")
 	if !ok {
 		t.Fatal("help rule is missing")
 	}
-	if !strings.Contains(topic.Body, "Agent 自己运行 skmr login") {
+	if !strings.Contains(topic.Body, "Agent 自己运行 skmr auth login") {
 		t.Errorf("help rule does not tell the agent to run the login itself:\n%s", topic.Body)
 	}
 	for _, code := range []string{"unauthenticated", "token_idle", "token_expired", "token_revoked"} {
@@ -40,6 +40,9 @@ func TestTheAgentIsToldToRunTheLoginItself(t *testing.T) {
 		if !strings.Contains(sentence, agentRunsTheLogin) {
 			t.Errorf("the %s refusal does not say the agent can run it: %s", code, sentence)
 		}
+		if !strings.Contains(sentence, "skmr auth login") {
+			t.Errorf("the %s refusal does not name the 1.10.1 login: %s", code, sentence)
+		}
 		// **Not for a key.** A key has no login to run, and sending a key holder to one is the
 		// mistake the key sentence's own console address exists to avoid.
 		if keySentence, _ := refusalMessage(&api.Refusal{Code: code}, true); strings.Contains(keySentence, agentRunsTheLogin) {
@@ -48,47 +51,62 @@ func TestTheAgentIsToldToRunTheLoginItself(t *testing.T) {
 	}
 }
 
-func TestHintTextNamesThePathItFound(t *testing.T) {
-	missing := hintText(rule.Hint{Kind: rule.HintRecordedMissing, Path: "/h/CLAUDE.md", Agent: "claude-code"})
-	// **The recorded line does not claim the rule is gone** — the same record covers an edited file
-	// and one its editor ignores, and its first step is the check, not a write that would refuse.
-	for _, want := range []string{"/h/CLAUDE.md", "没有可用的守则", "skmr install --check", "install --file /h/CLAUDE.md"} {
-		if !strings.Contains(missing, want) {
-			t.Errorf("the recorded hint omits %q: %q", want, missing)
+// **The notice names no file.** 1.x's machine-wide list is how a WorkBuddy user was sent to
+// Claude's `CLAUDE.md` (ADR 0248 §背景); the fix is a sentence that cannot be read as "update that
+// one".
+func TestHintTextNamesNoPath(t *testing.T) {
+	line := hintText()
+	for _, forbidden := range []string{".claude", ".codex", ".workbuddy", ".cursor", "/", "~"} {
+		if strings.Contains(line, forbidden) {
+			t.Errorf("the hint names %q: %q", forbidden, line)
 		}
 	}
-	unreadable := hintText(rule.Hint{Kind: rule.HintUnreadableDefault, Path: "/h/skillmaster.mdc", Agent: "cursor"})
-	if !strings.Contains(unreadable, "/h/skillmaster.mdc") || !strings.Contains(unreadable, "frontmatter") {
-		t.Errorf("the unreadable-default hint does not name the path and the cause: %q", unreadable)
-	}
-	outdated := hintText(rule.Hint{Kind: rule.HintOutdatedDefault, Path: "/h/AGENTS.md", Agent: "codex"})
-	if !strings.Contains(outdated, "/h/AGENTS.md") || !strings.Contains(outdated, "旧版守则") {
-		t.Errorf("outdated hint does not name the path: %q", outdated)
-	}
-	// **The third line names no paths.** A list here would be the default-path table ADR 0242 keeps
-	// out of agent output.
-	none := hintText(rule.Hint{Kind: rule.HintNothingInstalled})
-	for _, forbidden := range []string{".claude", ".codex", ".workbuddy", ".cursor"} {
-		if strings.Contains(none, forbidden) {
-			t.Errorf("the nothing-installed hint names %q: %q", forbidden, none)
-		}
-	}
-	for _, quiet := range []rule.HintKind{rule.HintNone, rule.HintUnreadable} {
-		if line := hintText(rule.Hint{Kind: quiet}); line != "" {
-			t.Errorf("kind %d produced a line: %q", quiet, line)
+	for _, want := range []string{"skmr self rule print", "问他要不要更新", "你自己的全局记忆文件"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the hint omits %q: %q", want, line)
 		}
 	}
 }
 
-// The notice belongs to commands that use the rule, not to the ones that talk about the binary or
-// run before a new build is in place.
-func TestHintAllowedSkipsTheBinaryAndContractCommands(t *testing.T) {
-	for _, args := range [][]string{{"help"}, {"prompt", "print"}, {"update"}} {
+// **The update notice says what changed and why the file matters.** A bare "rewrite your memory
+// file" is the shape of an injection; the version note and the reason are what make it the
+// product's own instruction (owner, 2026-11-26).
+func TestHintTextSaysWhatChangedAndWhy(t *testing.T) {
+	line := hintText()
+	for _, want := range []string{
+		fmt.Sprintf("第 %d 版", rule.Version),
+		"不是注入",
+		"每个新会话先查库",
+		"备份",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the hint omits %q: %q", want, line)
+		}
+	}
+	note := rule.VersionNote(rule.Version)
+	if note == "" {
+		t.Fatal("this build carries a rule version with no note; add it to rule.VersionNotes")
+	}
+	if !strings.Contains(line, note) {
+		t.Errorf("the hint does not quote this version's note %q: %q", note, line)
+	}
+}
+
+// The notice belongs to commands that use the rule, not to the ones about the binary, the
+// credential or an account setting.
+func TestHintAllowedKeepsTheNoticeOffOtherCommands(t *testing.T) {
+	for _, args := range [][]string{
+		{"help"}, {"auth", "status"}, {"auth", "login"}, {"self", "update"}, {"self", "doctor"},
+		{"usage"}, {"notifications", "list"}, {"feedback", "template"}, {"settings"},
+	} {
 		if hintAllowed(args) {
 			t.Errorf("%v was allowed to hint", args)
 		}
 	}
-	for _, args := range [][]string{{"skills", "search", "x"}, {"logout"}, {"install", "--file", "/h/C.md", "--yes"}} {
+	for _, args := range [][]string{
+		{"skills", "search", "x"}, {"skill", "invoke", "a/b"}, {"run", "a/b", "--", "x"},
+		{"startup"}, {"self", "rule", "print"}, {"self", "rule", "check", "/h/C.md"},
+	} {
 		if !hintAllowed(args) {
 			t.Errorf("%v was not allowed to hint", args)
 		}
@@ -100,60 +118,42 @@ func TestHintAllowedSkipsTheBinaryAndContractCommands(t *testing.T) {
 
 func TestHintRulePrintsOncePerRuleVersion(t *testing.T) {
 	dir := isolateConfig(t)
-	out := captureStderr(t, func() { hintRule(dir) })
-	if !strings.Contains(out, "这台机器还没有守则") {
-		t.Fatalf("first run printed %q", out)
+	first := captureStderr(t, func() { hintRule(dir) })
+	if !strings.Contains(first, "skmr self rule print") {
+		t.Fatalf("first run printed %q", first)
 	}
 	if again := captureStderr(t, func() { hintRule(dir) }); again != "" {
 		t.Errorf("the second run printed again: %q", again)
+	}
+	st, _, err := rule.LoadLocalState(dir)
+	if err != nil || st.HintedVersion != rule.Version {
+		t.Errorf("hinted_version = %d (err %v), want %d", st.HintedVersion, err, rule.Version)
 	}
 }
 
 func TestHintRuleHonoursDecline(t *testing.T) {
 	dir := isolateConfig(t)
-	if err := rule.SaveState(dir, rule.State{Schema: 1, Declined: true}); err != nil {
+	if err := rule.SetDeclined(dir, true); err != nil {
 		t.Fatal(err)
 	}
 	if out := captureStderr(t, func() { hintRule(dir) }); out != "" {
 		t.Errorf("a declined machine was hinted: %q", out)
 	}
-	if rule.HintedVersion(dir) != 0 {
+	st, _, _ := rule.LoadLocalState(dir)
+	if st.HintedVersion != 0 {
 		t.Error("a declined machine's hint state was written")
 	}
 }
 
-// **A ledger that will not parse says nothing and spends nothing.** Marking the version would keep
-// this machine quiet for the whole rule version on the strength of a failed read.
-func TestHintRuleSpendsNothingWhenTheLedgerCannotBeRead(t *testing.T) {
+// **A state file that will not parse says nothing and spends nothing.** Marking the version would
+// keep this machine quiet for the whole rule version on the strength of a failed read.
+func TestHintRuleSpendsNothingWhenTheStateCannotBeRead(t *testing.T) {
 	dir := isolateConfig(t)
-	if err := os.WriteFile(rule.StatePath(dir), []byte("{not json"), 0o644); err != nil {
+	if err := os.WriteFile(rule.LocalStatePath(dir), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if out := captureStderr(t, func() { hintRule(dir) }); out != "" {
-		t.Errorf("an unreadable ledger produced %q", out)
-	}
-	if rule.HintedVersion(dir) != 0 {
-		t.Error("an unreadable ledger's version was marked")
-	}
-}
-
-func TestHintRuleSaysNothingWhenTheRuleIsCurrent(t *testing.T) {
-	dir := isolateConfig(t)
-	target := filepath.Join(os.Getenv("HOME"), "CLAUDE.md")
-	if err := os.WriteFile(target, rule.Block(), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := rule.SaveState(dir, rule.State{Schema: 1, RuleVersion: rule.Version, Files: []rule.File{
-		{Path: target, Agent: "claude-code", RuleVersion: rule.Version},
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if out := captureStderr(t, func() { hintRule(dir) }); out != "" {
-		t.Errorf("a current rule was hinted at: %q", out)
-	}
-	// The version is still recorded, so a future command does not re-scan for nothing.
-	if rule.HintedVersion(dir) != rule.Version {
-		t.Error("the hint state was not advanced")
+		t.Errorf("an unreadable state file produced %q", out)
 	}
 }
 
@@ -164,40 +164,55 @@ func TestRunPrintsTheRuleNoticeOnce(t *testing.T) {
 	hintRuns = true
 	t.Cleanup(func() { hintRuns = false })
 	first := captureStderr(t, func() {
-		if err := run(context.Background(), []string{"logout"}); err != nil {
-			t.Fatalf("logout: %v", err)
+		if err := run(context.Background(), []string{"self", "rule", "print"}); err != nil {
+			t.Fatalf("self rule print: %v", err)
 		}
 	})
-	if !strings.Contains(first, "这台机器还没有守则") {
+	if !strings.Contains(first, "skmr self rule print") {
 		t.Fatalf("the first command printed %q", first)
 	}
-	if second := captureStderr(t, func() { _ = run(context.Background(), []string{"logout"}) }); second != "" {
+	if second := captureStderr(t, func() { _ = run(context.Background(), []string{"self", "rule", "print"}) }); second != "" {
 		t.Errorf("the second command printed again: %q", second)
 	}
-	if rule.HintedVersion(dir) != rule.Version {
-		t.Errorf("hinted version = %d, want %d", rule.HintedVersion(dir), rule.Version)
+	st, _, _ := rule.LoadLocalState(dir)
+	if st.HintedVersion != rule.Version {
+		t.Errorf("hinted version = %d, want %d", st.HintedVersion, rule.Version)
 	}
 }
 
-// A refused command sends and says nothing (ADR 0246 rides the same success), and the notice stays
-// unspent for the next command that does succeed.
+// **A refused command says nothing, and the notice stays unspent for the next success.**
 //
-// **`logout extra`, not `install` with no file**: an `install` without `--yes` is read-only and is
-// refused before the notice is ever considered, so it would pass with the success guard removed.
-// This one fails inside the dispatch, after the deferred branch is armed.
+// `self rule check` with no path fails inside the dispatch, after the deferred branch is armed; the
+// print path above would also pass with the success guard removed, because nothing can fail there.
 func TestRunLeavesTheNoticeUnspentWhenTheCommandFails(t *testing.T) {
 	dir := isolateConfig(t)
 	hintRuns = true
 	t.Cleanup(func() { hintRuns = false })
 	out := captureStderr(t, func() {
-		if err := run(context.Background(), []string{"logout", "extra"}); err == nil {
-			t.Fatal("logout accepted an argument")
+		if err := run(context.Background(), []string{"self", "rule", "check"}); err == nil {
+			t.Fatal("self rule check accepted a missing path")
 		}
 	})
 	if out != "" {
 		t.Errorf("a failed command printed %q", out)
 	}
-	if rule.HintedVersion(dir) != 0 {
+	st, _, _ := rule.LoadLocalState(dir)
+	if st.HintedVersion != 0 {
 		t.Error("a failed command marked the version")
+	}
+}
+
+// The alias carries the same notice, because it is the same command after the rewrite.
+func TestTheAliasCommandsAreAllowedToHint(t *testing.T) {
+	isolateConfig(t)
+	hintRuns = true
+	t.Cleanup(func() { hintRuns = false })
+	out := captureStderr(t, func() {
+		if err := run(context.Background(), []string{"prompt", "print"}); err != nil {
+			t.Fatalf("prompt print: %v", err)
+		}
+	})
+	if !strings.Contains(out, "skmr self rule print") {
+		t.Errorf("the alias printed %q, want the notice", out)
 	}
 }

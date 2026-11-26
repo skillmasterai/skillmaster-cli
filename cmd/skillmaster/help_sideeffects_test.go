@@ -60,7 +60,7 @@ func TestLogoutHelpLeavesTheRealCredentialAlone(t *testing.T) {
 	if runErr != nil {
 		t.Fatalf("logout --help: %v", runErr)
 	}
-	if !strings.Contains(stdout, "用法：skmr logout") {
+	if !strings.Contains(stdout, "用法：skmr auth logout") {
 		t.Fatalf("logout --help did not print its help:\n%s", stdout)
 	}
 

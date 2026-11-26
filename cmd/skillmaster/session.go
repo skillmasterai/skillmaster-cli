@@ -105,7 +105,7 @@ func clientFor(ctx context.Context, noLogin bool) (api.Client, error) {
 		// at.** A login is the one the switch is protecting against; an API key in the environment is
 		// the shape that needs no person and no store. Returning here also means no request is sent,
 		// which is the first thing a caller in a loop can rely on.
-		return api.Client{}, &credentialError{message: fmt.Sprintf("本机没有凭据，--no-login 不会发起登录。先运行 skmr login，"+
+		return api.Client{}, &credentialError{message: fmt.Sprintf("本机没有凭据，--no-login 不会发起登录。先运行 skmr auth login，"+
 			"或把一把控制台签发的 API key 放进 %s。", config.ApiKeyEnv)}
 	}
 	if errors.Is(err, auth.ErrNotSignedIn) && browserAvailable() &&
@@ -114,7 +114,7 @@ func clientFor(ctx context.Context, noLogin bool) (api.Client, error) {
 		// nothing to open a link in.** Since v68 the login itself works in all three — the link can be
 		// opened on a phone — but here it would be this command blocking for up to ten minutes on a
 		// step whose URL nobody has seen. `CI` is the one environment variable that means "no person
-		// is watching"; an explicit `skmr login` still does it anywhere, because there the person
+		// is watching"; an explicit `skmr auth login` still does it anywhere, because there the person
 		// asked and the link is the command's own answer.
 		// On stderr, because it is a notice and not the command's answer: `--json` promises that
 		// stdout carries exactly one object, and a line printed while the browser opens would be a
@@ -126,18 +126,18 @@ func clientFor(ctx context.Context, noLogin bool) (api.Client, error) {
 		stored, err = auth.AccessToken(store)
 	}
 	if errors.Is(err, auth.ErrNotSignedIn) {
-		// No credential and no way to open a browser here. The bare "先运行 skmr login" that
+		// No credential and no way to open a browser here. The bare "先运行 skmr auth login" that
 		// used to fall out of this path sends a headless machine to a command that cannot finish
 		// (v22 A2). **An ordinary failure, not exit 4**: ADR 0087's four-credential class is a closed
 		// list, and a missing credential on a machine that could log in is not that. `startup` is the
 		// one caller that deliberately turns this into the credential class, because for it the
 		// refusal *is* the answer.
 		//
-		// **The way through is one command, and since v68 it works here too.** `skmr login` prints a
+		// **The way through is one command, and since v68 it works here too.** `skmr auth login` prints a
 		// link this machine does not have to be able to open — a phone will do — so a sandbox is told
 		// to run it rather than sent outside. Only a machine with nobody behind it gets the key
 		// instead, because a key is the one shape that needs no person at all.
-		return api.Client{}, fmt.Errorf("%w。运行 skmr login，把打印的链接在任意浏览器里打开批准；"+
+		return api.Client{}, fmt.Errorf("%w。运行 skmr auth login，把打印的链接在任意浏览器里打开批准；"+
 			"无人值守把一把控制台签发的 API key 放进 %s（help auth）。",
 			errNoBrowserNoCredential, config.ApiKeyEnv)
 	}
@@ -227,7 +227,7 @@ func authenticatedWith[T any](ctx context.Context, noLogin bool,
 		// named reasons give, and the design names it there for the same reason: this path has no
 		// renewal, so the answer is another login rather than waiting for one.
 		return nothing, fmt.Errorf("%w；这份凭据是一次 CLI 登录换来的，"+
-			"重新运行 skmr login 点一下就能换一份新的。%s\n      这份凭据来自 %s。",
+			"重新运行 skmr auth login 点一下就能换一份新的。%s\n      这份凭据来自 %s。",
 			err, agentRunsTheLogin, credentialSource())
 	}
 	return result, err

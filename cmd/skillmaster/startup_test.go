@@ -32,14 +32,14 @@ func TestStartupRefusesWithoutACredentialAndNamesBothWays(t *testing.T) {
 	if got := reportError(err); got != 4 {
 		t.Errorf("exit code = %d, want 4 (the credential class)", got)
 	}
-	for _, want := range []string{"skmr login", config.ApiKeyEnv} {
+	for _, want := range []string{"skmr auth login", config.ApiKeyEnv} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q:\n%s", want, err)
 		}
 	}
 }
 
-// **A command does not start a login nobody asked for in a sandbox.** Since v68 `skmr login` itself
+// **A command does not start a login nobody asked for in a sandbox.** Since v68 `skmr auth login` itself
 // works there — the link is opened elsewhere — but a command that quietly blocks for ten minutes on
 // a URL nobody has been shown is a different thing from one the person typed.
 func TestASandboxWithoutCredentialDoesNotStartABrowserLogin(t *testing.T) {
@@ -61,7 +61,7 @@ func TestASandboxWithoutCredentialDoesNotStartABrowserLogin(t *testing.T) {
 	if started {
 		t.Fatal("a browser login was started inside a detectable sandbox")
 	}
-	for _, want := range []string{config.ApiKeyEnv, "skmr login", "任意浏览器"} {
+	for _, want := range []string{config.ApiKeyEnv, "skmr auth login", "任意浏览器"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("message = %q, want it to name %s", err, want)
 		}
@@ -93,7 +93,7 @@ func TestACommandInCIDoesNotStartALogin(t *testing.T) {
 	if started {
 		t.Fatal("a login was started for a command in CI")
 	}
-	for _, want := range []string{"skmr login", config.ApiKeyEnv} {
+	for _, want := range []string{"skmr auth login", config.ApiKeyEnv} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("message = %q, want it to name %s", err, want)
 		}
@@ -101,7 +101,7 @@ func TestACommandInCIDoesNotStartALogin(t *testing.T) {
 }
 
 // **The sandbox sentence names the one command that works there now.** It used to send the person
-// outside the sandbox; since v68 `skmr login` prints a link that any browser can open, so startup
+// outside the sandbox; since v68 `skmr auth login` prints a link that any browser can open, so startup
 // says that and keeps the credential exit code so an agent can tell it apart from a network failure.
 func TestStartupInASandboxNamesTheWayThatWorksThere(t *testing.T) {
 	t.Setenv(config.ApiKeyEnv, "")
@@ -117,7 +117,7 @@ func TestStartupInASandboxNamesTheWayThatWorksThere(t *testing.T) {
 	if got := reportError(err); got != 4 {
 		t.Errorf("exit code = %d, want 4 (the credential class)", got)
 	}
-	for _, want := range []string{"skmr login", "任意浏览器", config.ApiKeyEnv} {
+	for _, want := range []string{"skmr auth login", "任意浏览器", config.ApiKeyEnv} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q:\n%s", want, err)
 		}

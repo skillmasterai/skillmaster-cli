@@ -6,10 +6,14 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/help"
 )
 
-// commandHelp is the whole command table: 101 command paths, nine pure groups, the top level, and
-// five topics. The declarations live here, next to the handlers, because the help and the command have one
-// home (v16 做 #7). One declaration per command; the command-tree test proves the set matches the
-// dispatch.
+// commandHelp is the whole command table: every executable path, the pure groups, the top level,
+// and the topics. The declarations live here, next to the handlers, because the help and the
+// command have one home (v16 做 #7). One declaration per command; the command-tree test proves the
+// set matches the dispatch.
+//
+// **Only the 1.10.1 names are declared** (ADR 0248 §4): `update`/`doctor`/`login`/`logout` and
+// `prompt print` still run through the rewrite table in main.go, but a help page that listed both
+// sets would be the two-name confusion the grouping exists to end.
 type declarationsCatalog struct {
 	specs  []*help.Spec
 	topics map[string]help.Topic
@@ -77,35 +81,34 @@ var commandHelp = declarationsCatalog{
   SKILLMASTER_SKILLS_DIR   submit 裸名字的目录（默认 ~/.claude/skills）
   SKILLMASTER_WEB_URL      审批页地址（默认同上）
   SKILLMASTER_AUTO_UPDATE  设 0 关自动更新
-  SKILLMASTER_REPORT       设 0 关安装状态上报
+  SKILLMASTER_REPORT       设 0 关守则覆盖率上报
 无人值守：控制台 /account/keys 签 skm_… 填进 SKILLMASTER_API_KEY，auth status 验证。
 `,
 		},
 		"rule": {
 			Name:  "rule",
-			Label: "守则安装",
-			Body: `守则安装（Agent）：
-  1. 先问用户写哪个全局指令文件。
-  2. 同意后：skmr install --file <路径> --agent <agent> --yes
-  3. 回读：skmr install --check
-  4. 写不了：prompt print 正文手写进去，
-     再 install --file <同一路径> --yes，--check
-  5. 拒绝：skmr install --decline，不再问
-  6. 状态：skmr doctor
-守则更新提示照做。凭据失效：Agent 自己运行 skmr login，链接交用户批准。
-路径由用户提供，CLI 不给默认路径。
+			Label: "守则",
+			Body: `守则（Agent）：
+  1. 先问用户写不写、写哪份记忆文件。
+  2. 取正文：skmr self rule print
+  3. 先备份，再写进你客户端的文件；Cursor 的 .mdc 开头要有
+     frontmatter（---、description、alwaysApply: true），写完重载窗口，项目在主目录下。
+  4. 回读：skmr self rule check <路径>（当前且无旧段）。
+  5. 不让写：skmr self rule decline。
+CLI 不写，也不给默认路径。
+凭据失效：Agent 自己运行 skmr auth login。
 `,
 		},
 		"auth": {
 			Name:  "auth",
 			Label: "凭据",
 			Body: `两种凭据：
-  登录：skmr login——打印一个链接，任意浏览器批准（手机也行，沙箱里也能用）。
+  登录：skmr auth login —— 打印一个链接，任意浏览器批准（手机也行，沙箱也行）。
   API key：控制台 /account/keys 签一把 skm_…，放进 SKILLMASTER_API_KEY。
-           无人值守的机器用它——不需要任何人点同意，也不写本机。
+           无人值守的机器用它：不用任何人同意，也不写本机。
 验证：skmr auth status
 续期 / 撤销：登录的去控制台「登录设备」，key 的去「API 密钥」。
-logout 会清本机；CLI 登录还会结束服务端那次登录，key 只清本机。
+auth logout 会清本机；CLI 登录还会结束服务端那次登录，key 只清本机。
 `,
 		},
 		"workflow": {
@@ -142,7 +145,13 @@ var topSpecs = []*help.Spec{
 	{
 		Path:      "",
 		Summary:   "SkillMaster AI 命令行",
-		Children:  []string{"skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "auth", "login", "logout", "startup", "install", "prompt", "update", "run", "doctor", "settings"},
+		Children:  []string{"self", "auth", "skill", "skills", "version", "draft", "notifications", "usage", "secret", "feedback", "startup", "run", "settings"},
+		PureGroup: true,
+	},
+	{
+		Path:      "self",
+		Summary:   "CLI 自身管理",
+		Children:  []string{"update", "doctor", "rule"},
 		PureGroup: true,
 	},
 	{
@@ -165,8 +174,8 @@ var topSpecs = []*help.Spec{
 	},
 	{
 		Path:      "auth",
-		Summary:   "这份凭据的状态",
-		Children:  []string{"status"},
+		Summary:   "凭据：状态、登录、退出",
+		Children:  []string{"status", "login", "logout"},
 		PureGroup: true,
 	},
 	{
@@ -191,9 +200,9 @@ var topSpecs = []*help.Spec{
 		Exits:    exitsWithCredential,
 	},
 	{
-		Path:    "login",
+		Path:    "auth login",
 		Summary: "登录这台机器",
-		Usage:   "skmr login [--keyring]",
+		Usage:   "skmr auth login [--keyring]",
 		Output: "在终端打印一个一次性链接，你在任意浏览器里打开并批准——手机、另一台电脑都行，" +
 			"云设备不需要自己的浏览器。批准后这条命令自动继续，通常两秒内完成；链接 10 分钟有效，" +
 			"只能批准一次，不要转发。Ctrl-C 取消，会尽力通知服务端结束这次待批准；" +
@@ -208,24 +217,24 @@ var topSpecs = []*help.Spec{
 		},
 		Failures: []help.Failure{
 			{Code: "network", Summary: "打开或连不上服务端", Next: "检查网络与地址后重试"},
-			{Code: "login_failed", Summary: "页面上没有批准，或链接过期了", Next: "重新运行 skmr login 拿一个新链接"},
+			{Code: "login_failed", Summary: "页面上没有批准，或链接过期了", Next: "重新运行 skmr auth login 拿一个新链接"},
 			{Code: "too_many_requests", Summary: "登录试得太频繁", Next: "等一会儿再试"},
 		},
-		Examples: []string{"skmr login", "skmr login --keyring"},
-		Parent:   "",
+		Examples: []string{"skmr auth login", "skmr auth login --keyring"},
+		Parent:   "auth",
 		Exits:    exitsLocal,
 	},
 	{
-		Path:    "logout",
+		Path:    "auth logout",
 		Summary: "退出本机的凭据",
-		Usage:   "skmr logout",
+		Usage:   "skmr auth logout",
 		Output: "清掉本机副本；CLI 登录还会结束服务端那次登录，" +
 			"API key 只清本机并告诉你服务端那把去哪里撤销。",
 		Failures: []help.Failure{
 			{Code: "network", Summary: "读不出本机凭据", Next: "检查钥匙串后重试"},
 		},
-		Examples: []string{"skmr logout"},
-		Parent:   "",
+		Examples: []string{"skmr auth logout"},
+		Parent:   "auth",
 		Exits:    []int{0, 1},
 	},
 	{
@@ -233,7 +242,7 @@ var topSpecs = []*help.Spec{
 		Summary: "开始入门旅程",
 		Usage:   "skmr startup",
 		Output: "先确保这台机器登录：没有凭据时它先带你登录——终端打印链接，你在任意浏览器里批准；" +
-			"没有浏览器可用时也会说明改用 skmr login 或 API key 怎么继续。登录后加载官方入门技能 " +
+			"没有浏览器可用时也会说明改用 skmr auth login 或 API key 怎么继续。登录后加载官方入门技能 " +
 			"skillmaster/skillmaster-startup、钉住这一版，正文原样打印到 stdout；提示走 stderr。\n" + keyLine,
 		Failures: []help.Failure{
 			{Code: "usage", Summary: "多给了参数", Next: "去掉多余的参数：startup 不带参数"},
@@ -276,7 +285,7 @@ var topSpecs = []*help.Spec{
 			{Code: "usage", Summary: "-- 后面没有命令、契约也没有 default，或给了不止一个地址", Next: "写 -- <命令>；或让作者声明 default"},
 			{Code: "not_found", Summary: "地址不存在，或这个版本看不到", Next: "skmr skill versions <地址> 看有哪些版本"},
 			{Code: "skill_gone", Summary: "这个 skill 已被作者删除", Next: "地址不再服务；换一个用 skmr skills search"},
-			{Code: "network", Summary: "连不上服务端", Next: "先跑 skmr doctor 看网络与沙箱"},
+			{Code: "network", Summary: "连不上服务端", Next: "先跑 skmr self doctor 看网络与沙箱"},
 			{Code: "credential_quota_exceeded", Summary: "绑定的凭据今天到上限了", Next: "让用户跑 skmr secret quota；别自行提高"},
 		},
 		Examples: []string{"skmr run dev/pdf-tools -- python3 plan.py"},
@@ -285,10 +294,10 @@ var topSpecs = []*help.Spec{
 		ExitNote: "被执行的命令的退出码原样返回；run 自己失败时是 1 / 2 / 4，超时是 124。",
 	},
 	{
-		Path:    "doctor",
+		Path:    "self doctor",
 		Summary: "自检；--fix 改配置",
-		Usage:   "skmr doctor [--fix [--undo] [--dry-run]]",
-		Output: "不带参数：只打印八行状态（「守则」一行只报各状态计数与补救，不打印路径、文件内容或默认路径表；末行回答「这个进程能不能直接敲 skmr」），必要时另加一段按客户端区分的可复制配置，不写任何设置。\n" +
+		Usage:   "skmr self doctor [--fix [--undo] [--dry-run]]",
+		Output: "不带参数：只打印八行状态（「守则」一行只报检测到的客户端数与其中几个有当前守则，不打印路径、文件内容或默认路径表；末行回答「这个进程能不能直接敲 skmr」），必要时另加一段按客户端区分的可复制配置，不写任何设置。\n" +
 			"--fix：运行即表示同意写入；把状态目录与 SkillMaster AI 的平台/更新域名写进检测到的客户端；" +
 			"没有域名键的打开网络总开关，" +
 			"Codex 旧式还会打开工作区可写（不只是状态目录）。" +
@@ -299,10 +308,10 @@ var topSpecs = []*help.Spec{
 			{Name: "--dry-run", Summary: "只打印会改什么，不落盘（配合 --fix）"},
 		},
 		Failures: []help.Failure{
-			{Code: "usage", Summary: "参数组合不对", Next: "skmr doctor 或 skmr doctor --fix"},
+			{Code: "usage", Summary: "参数组合不对", Next: "skmr self doctor，或加 --fix"},
 		},
-		Examples: []string{"skmr doctor", "skmr doctor --fix"},
-		Parent:   "",
+		Examples: []string{"skmr self doctor", "skmr self doctor --fix"},
+		Parent:   "self",
 		Exits:    exitsLocal,
 	},
 	{
@@ -322,50 +331,59 @@ var topSpecs = []*help.Spec{
 		Parent:   "auth",
 		Exits:    exitsWithCredential,
 	},
-	// **`install` writes the rule, `prompt print` hands it over by hand** (v94, ADR 0242). The target
-	// is always `--file`: a default path would be the CLI guessing where somebody's agent reads its
-	// instructions, and a guess that lands in the wrong file is worse than an extra question.
+	// **The rule verbs only read** (ADR 0249): the file belongs to the agent, so the CLI hands over
+	// the text, answers one file's state, or records "stop asking". It never writes an instruction
+	// file and keeps no record of one — that record is what sent a WorkBuddy user to Claude's file.
 	{
-		Path:    "install",
-		Summary: "安装守则",
-		Usage:   "skmr install --file <路径> [--agent <名>] [--yes] [--dry-run] [--undo] | --check | --decline",
-		Flags: []help.Flag{
-			{Name: "--file", Value: "<路径>", Summary: "要写入的用户级指令文件；只有这一个来源"},
-			{Name: "--agent", Value: "<名>", Summary: "标注是哪个 Agent，只用于检查与上报"},
-			{Name: "--yes", Summary: "确认写入；不加只预览"},
-			{Name: "--dry-run", Summary: "只打印计划，不写文件"},
-			{Name: "--undo", Summary: "用备份还原，或把新建的文件清空"},
-			{Name: "--check", Summary: "回读记录过的文件"},
-			{Name: "--decline", Summary: "记下用户拒绝：不再提示"},
-		},
-		Output: "写入前先备份；同一份守则在文件里只保留一份，重复运行说「已是最新」。\n" +
-			"本机已有的技能目录原样保留，不改名也不删除（ADR 0245）。\n" +
-			"只写用户级文件；不碰项目级文件、MCP、沙箱与网络白名单。",
-		Failures: []help.Failure{
-			{Code: "usage", Summary: "缺 --file，或几个模式混用", Next: "一次只做一件事；写文件必须给 --file"},
-		},
-		Examples: []string{"skmr install --file <路径> --agent <名> --yes",
-			"skmr install --check"},
-		Parent: "",
-		Next:   "skmr install --check",
-		Exits:  exitsLocal,
-	},
-	// The two doors added by v25. Both are local: `prompt` never talks to the server, and `update`
-	// talks to the release bucket rather than to the API.
-	//
-	// **`prompt` is one door now** (v27, ADR 0110): `install` / `status` / `update` / `uninstall`
-	// retired with the markers, so the group only prints. The summary names the thing the way the
-	// journey does — 「那段说明」 — not 「规则段」, which is our word for it (v26 prd §话术).
-	{
-		Path:      "prompt",
-		Summary:   "打印守则正文",
-		Children:  []string{"print"},
+		Path:      "self rule",
+		Summary:   "这段守则（只读）",
+		Children:  []string{"print", "check", "decline"},
 		PureGroup: true,
 	},
 	{
-		Path:    "update",
+		Path:    "self rule print",
+		Summary: "打印守则正文",
+		Usage:   "skmr self rule print",
+		Output:  "把这个二进制自带的那段说明原样写到 stdout，断网、没有凭据也能用。Agent 拿到正文后写进它自己的全局记忆文件，先问用户。",
+		Failures: []help.Failure{
+			{Code: "usage", Summary: "多给了参数", Next: "去掉多余的参数"},
+		},
+		Examples: []string{"skmr self rule print"},
+		Parent:   "self rule",
+		Next:     "skmr self rule check <路径>",
+		Exits:    exitsLocal,
+	},
+	{
+		Path:    "self rule check",
+		Summary: "看一个文件的守则状态",
+		Usage:   "skmr self rule check <路径>",
+		Args:    []help.Arg{{Name: "<路径>", Key: "path"}},
+		Output: "读一次这个文件，不改它：当前（退出码 0）、旧版、被改过、读不到、没有、不管（都是 1）。" +
+			"「读不到」是 Cursor 的 .mdc 缺 frontmatter——编辑器会忽略整个文件；「不管」是符号链接、目录或在 Git 仓库里的项目级文件；" +
+			"「当前」后面若带「旁边还有一段旧守则」，先删掉那段再查。",
+		Failures: []help.Failure{
+			{Code: "usage", Summary: "没给路径，或给了不止一个", Next: "只给一个要检查的文件路径"},
+		},
+		Examples: []string{"skmr self rule check <路径>"},
+		Parent:   "self rule",
+		Exits:    exitsLocal,
+	},
+	{
+		Path:    "self rule decline",
+		Summary: "不再提示守则更新",
+		Usage:   "skmr self rule decline",
+		Output:  "记下「不再提示」：之后命令末尾不再出现守则更新提示；已写入的文件不动。",
+		Failures: []help.Failure{
+			{Code: "usage", Summary: "多给了参数", Next: "去掉多余的参数"},
+		},
+		Examples: []string{"skmr self rule decline"},
+		Parent:   "self rule",
+		Exits:    exitsLocal,
+	},
+	{
+		Path:    "self update",
 		Summary: "更新这个 CLI",
-		Usage:   "skmr update [--check]",
+		Usage:   "skmr self update [--check]",
 		Flags: []help.Flag{
 			{Name: "--check", Summary: "只看有没有新版，不下载"},
 		},
@@ -377,20 +395,8 @@ var topSpecs = []*help.Spec{
 			{Code: "not_found", Summary: "发布源上没有这个平台的包", Next: "重跑安装说明里那条命令"},
 			{Code: "invalid_request", Summary: "下载的包校验不符", Next: "重跑安装说明里那条命令"},
 		},
-		Examples: []string{"skmr update --check", "skmr update"},
-		Parent:   "",
-		Exits:    exitsLocal,
-	},
-	{
-		Path:    "prompt print",
-		Summary: "打印守则正文",
-		Usage:   "skmr prompt print",
-		Output:  "把这个二进制自带的那段说明原样写到 stdout，断网、没有凭据也能用。",
-		Failures: []help.Failure{
-			{Code: "usage", Summary: "多给了参数", Next: "去掉多余的参数"},
-		},
-		Examples: []string{"skmr prompt print"},
-		Parent:   "prompt",
+		Examples: []string{"skmr self update --check", "skmr self update"},
+		Parent:   "self",
 		Exits:    exitsLocal,
 	},
 }

@@ -20,7 +20,7 @@ import (
 // v52 adds the eight `secret` verbs (sharing is console-only, so no share/unshare): 79 + 8.
 // v54 adds `skill copy`: 90 + 1. v58 adds the `usage` verbs; v59 adds
 // `skill my-when-to-use` and its two verbs; v65 adds `skills labels` and `feedback attach`: 97 + 2.
-const wantCommandPaths = 101
+const wantCommandPaths = 102
 
 // relativeTimeWords are the phrases a help text must not use: they describe the product's state at
 // the moment somebody wrote it, and they go stale without anyone editing the text.
@@ -92,7 +92,7 @@ func TestEveryHelpFitsTheBudget(t *testing.T) {
 
 func TestTopLevelHelpListsEverything(t *testing.T) {
 	text := help.Render(commandHelp, "")
-	for _, name := range []string{"skill", "skills", "version", "auth", "login", "logout", "startup"} {
+	for _, name := range []string{"skill", "skills", "version", "auth", "self", "startup"} {
 		if !strings.Contains(text, name) {
 			t.Errorf("top-level help does not mention %q", name)
 		}
@@ -145,14 +145,14 @@ func TestEveryCommandThatCanExitFourSaysWhatToDo(t *testing.T) {
 			}
 		}
 		if !canFour {
-			if strings.Contains(text, "运行 skmr login，或到控制台换一把 API key") {
+			if strings.Contains(text, "运行 skmr auth login，或到控制台换一把 API key") {
 				t.Errorf("%q never leaves this machine but advertises a credential failure:\n%s", spec.Path, text)
 			}
 			continue
 		}
-		// `skmr login` is the next step an agent needs; a command may say it in its own
+		// `skmr auth login` is the next step an agent needs; a command may say it in its own
 		// words (auth status does) or get it from the shared line.
-		for _, want := range []string{"skmr login", "连不上服务端"} {
+		for _, want := range []string{"skmr auth login", "连不上服务端"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("%q can exit 4 but its help does not mention %q:\n%s", spec.Path, want, text)
 			}
@@ -186,7 +186,7 @@ func TestTheUnauthenticatedNextStepAgreesWithTheRuntimeSentence(t *testing.T) {
 		}
 		// The declaration serves both shapes, so it names both: the login and where a key is
 		// replaced.
-		for _, want := range []string{"skmr login", "API key"} {
+		for _, want := range []string{"skmr auth login", "API key"} {
 			if !strings.Contains(declared, want) {
 				t.Errorf("%q's declared next step omits %q: %s", path, want, declared)
 			}
@@ -195,7 +195,7 @@ func TestTheUnauthenticatedNextStepAgreesWithTheRuntimeSentence(t *testing.T) {
 			t.Errorf("%q's declared next step names no place to replace a key: %s", path, declared)
 		}
 	}
-	if loginSentence, _ := refusalMessage(&api.Refusal{Code: "unauthenticated"}, false); !strings.Contains(loginSentence, "skmr login") {
+	if loginSentence, _ := refusalMessage(&api.Refusal{Code: "unauthenticated"}, false); !strings.Contains(loginSentence, "skmr auth login") {
 		t.Errorf("the login-credential sentence omits the login command: %s", loginSentence)
 	}
 	if keySentence, _ := refusalMessage(&api.Refusal{Code: "unauthenticated"}, true); !strings.Contains(keySentence, "/account/keys") {

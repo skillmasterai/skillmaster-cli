@@ -1,8 +1,10 @@
-// Package rule installs the SkillMaster 守则 into an agent's user-level instruction file.
+// Package rule knows the SkillMaster 守则: the text this binary carries, the older texts, and the
+// instruction files that follow it.
 //
-// **This package writes a file the person owns** (ADR 0242, superseding ADR 0110). The write is an
-// explicit command — `skmr install --file <path>` — and the target comes only from that flag: the
-// internal table in agents.go is for detection and reporting, never for choosing where to write.
+// **It writes nothing** (ADR 0249). 1.10.1 removed the writer and its ledger: the package answers
+// `self rule check` for one file, scans the known default locations for the coverage report, and
+// hands over the text with `self rule print`. Which file to write stays a question for the agent
+// and the person.
 package rule
 
 import (
@@ -21,19 +23,16 @@ const legacyCommand = config.LegacyName
 // **It changes only when the text changes in substance** (ADR 0242): a typo or a rephrasing is not a
 // new rule, and bumping it would trigger a migration for nothing. Detection, migration and the one
 // notice all hang off this number.
-const Version = 3
+const Version = 4
 
 // Block is the rule text this binary carries, ending in a newline.
 func Block() []byte { return prompt.Block() }
-
-// Digest is the content digest of Block.
-func Digest() string { return prompt.Digest() }
 
 // legacyBlocks are the exact texts earlier versions wrote.
 //
 // **Exact text, not a prefix or a regex.** A person's instruction file is theirs; a fuzzy match would
 // rewrite a sentence they deliberately changed. Anything not byte-identical is left alone and shown as
-// modified by `install --check`.
+// modified by `self rule check`.
 var legacyBlocks = [][]byte{
 	// v42–v92: the released one-line form. **This is the one most machines have** — it is what
 	// cli/v1.6.0 through cli/v1.8.0 wrote. It has no "AI" and no 「（技能库入口）」.
@@ -41,8 +40,8 @@ var legacyBlocks = [][]byte{
 	// v93's renamed form. It never shipped in a release, but a branch build may have written it.
 	[]byte("**铁律：任何任务都先调用 SkillMaster AI 这个 skill（技能库入口），照它的要求做；拿不准就调用，不要自己猜。别因为「这次很简单」「手边有现成工具」「刚才已经加载过」跳过。**\n"),
 	// v25–v26: the first form, between HTML markers. **This is the only legacy text the CLI itself
-	// ever wrote through `prompt install`**, so it is what `prompt.json` seeding exists for: those
-	// records can only point at files this block was written into.
+	// ever wrote** (`prompt install`), so a file carrying it is one an earlier version wrote — the
+	// record that said which files those were is gone, and the text is the only trace left.
 	[]byte("<!-- " + legacyCommand + ":begin -->\n" +
 		"SkillMaster 管我的全部 skill：查找、调用、编辑、整理，都通过 " + legacyCommand + " CLI 做。\n" +
 		"要按某个外部系统的规矩做事、要产出有固定格式的东西、你正要凭记忆写多步流程，或用户让你按我们的做法做时，先用它；拿不准就查一次。\n" +
@@ -72,9 +71,11 @@ var legacyBlocks = [][]byte{
 		"3. 本地 / 内置列表不完整，电脑上的旧副本也不是来源，都不能当「没有」的依据。\n" +
 		"4. 改 skill 在线做：文本用 `skill write <地址>@new <路径> --name <版名>`，图片 / PDF 等二进制用 `skill put <地址>@<版本码> <本地文件> <远端路径>`（`put` 只写已有草稿）；新建用 `skill create`；上线由人在网页上点。\n" +
 		"5. 其他命令见 `skmr help`。\n"),
-	// v94: the rule this build replaces. Every bump registers the previous text here so migration
-	// can find it — a version number alone names no bytes.
+	// v94: the rule v3 replaced. Every bump registers the previous text here so migration can find
+	// it — a version number alone names no bytes.
 	[]byte("SkillMaster 守则：\n涉及个人隐私的查询，先问用户是否同意；同意后再搜，不要先搜。\n开始任何任务前，先跑 `skmr skills search \"<任务一句话>\"`；没有查到就按常规继续。\n要新建/修改/发布/共享/删除 skill 时，先跑 `skmr help` 看怎么做。\n闲聊、常识问答和简单计算/翻译不用。\n"),
+	// v96 (shipped as 1.10.0): v94's text plus the login line. The rule 1.10.1 replaces.
+	[]byte("SkillMaster 守则：\n涉及个人隐私的查询，先问用户是否同意；同意后再搜，不要先搜。\n开始任何任务前，先跑 `skmr skills search \"<任务一句话>\"`；没有查到就按常规继续。\n要新建/修改/发布/共享/删除 skill 时，先跑 `skmr help` 看怎么做。\n凭据失效（登录过期、被撤销、闲置太久）时，自己运行 `skmr login`，把打印的链接交给用户点批准，不要让用户自己开终端。\n闲聊、常识问答和简单计算/翻译不用。\n"),
 }
 
 // legacySpanOutside returns the span of a legacy block that does not overlap the current rule.
@@ -151,38 +152,11 @@ func headingOutsideLegacy(content []byte) bool {
 	return bytes.Contains(rest, []byte("SkillMaster 守则："))
 }
 
-// adaptBlock returns block in the line ending the surrounding text uses, so a CRLF file stays CRLF.
-func adaptBlock(block, surrounding []byte) []byte {
-	if bytes.Equal(lineEnding(surrounding), []byte("\r\n")) {
-		return bytes.ReplaceAll(block, []byte("\n"), []byte("\r\n"))
-	}
-	return block
-}
-
-// lineEnding is the convention the text ends with, and the one a separator should follow.
-//
-// **The tail decides, not "does this file contain a CRLF anywhere".** A file may carry a pasted
-// Unix fragment in the middle and still end Windows-style; anything else writes the separator in a
-// different convention from the line it lands after (found in the append path, 2026-11-26).
-func lineEnding(content []byte) []byte {
-	if bytes.HasSuffix(content, []byte("\r\n")) {
-		return []byte("\r\n")
-	}
-	if bytes.HasSuffix(content, []byte("\n")) {
-		return []byte("\n")
-	}
-	if bytes.Contains(content, []byte("\r\n")) {
-		return []byte("\r\n")
-	}
-	return []byte("\n")
-}
-
 // stripLegacyOutside removes every old block that sits entirely outside the current rule and
 // reports how many it removed.
 //
-// **One pass is not enough.** A file can hold two: `prompt print` appended to an existing file, and
-// an uninstall that left the append behind, then the documented fallback pasted another. Removing
-// only the first leaves the agent reading two rule sets — the state this function exists to end.
+// **One pass is not enough.** A file can hold two: a rule pasted beside an old one, then another
+// pasted again. Leaving one behind is what makes an agent read two rule sets.
 func stripLegacyOutside(content, current []byte) ([]byte, int) {
 	removed := 0
 	for {
@@ -190,7 +164,7 @@ func stripLegacyOutside(content, current []byte) ([]byte, int) {
 		if !ok {
 			return content, removed
 		}
-		content = splice(content, start, end, nil)
+		content = append(append([]byte(nil), content[:start]...), content[end:]...)
 		removed++
 	}
 }

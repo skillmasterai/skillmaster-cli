@@ -31,7 +31,8 @@ var dispatchFunctions = map[string]string{
 	"tagVerb":           "skill tag",
 	"categoryVerb":      "skill category",
 	"myWhenToUseVerb":   "skill my-when-to-use",
-	"promptVerb":        "prompt",
+	"selfCmd":           "self",
+	"selfRule":          "self rule",
 }
 
 func TestTheCommandTreeMatchesTheSource(t *testing.T) {

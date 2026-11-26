@@ -692,7 +692,7 @@ func writeConfigFile(path string, blob []byte) error {
 		file.Close()
 		kept := "the old file is still there"
 		if created {
-			kept = "this run did not write it; run `skmr doctor --fix` again"
+			kept = "this run did not write it; run `skmr self doctor --fix` again"
 		}
 		return fmt.Errorf("writing %s (%s): %w", path, kept, err)
 	}
@@ -728,7 +728,7 @@ func restoreHint(path string) string {
 	}
 	// A half-written file without a backup is not fixed by running the same command again: the
 	// parser will refuse it. The CLI never deletes a file, so the person has to.
-	return "restore or remove that file yourself, then run `skmr doctor --fix`"
+	return "restore or remove that file yourself, then run `skmr self doctor --fix`"
 }
 
 // backup copies the file beside itself, **once**. It is never removed (ADR 0101), and the fixed name

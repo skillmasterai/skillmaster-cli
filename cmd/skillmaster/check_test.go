@@ -65,7 +65,7 @@ func TestCheckReportsBrokenReferencesAndExitsOne(t *testing.T) {
 			"`references/gone.md`\n" +
 			"`skill read dev/pdf-tools references/also-gone.md`\n" +
 			"[external](https://example.com/x.md)\n" +
-			"`skmr login`\n",
+			"`skmr auth login`\n",
 		"references/checklist.md": "fine\n",
 	}, nil)
 	pointAtServer(t, mux.ServeHTTP)
@@ -83,7 +83,7 @@ func TestCheckReportsBrokenReferencesAndExitsOne(t *testing.T) {
 			t.Errorf("output does not report %q:\n%s", want, stdout)
 		}
 	}
-	for _, unwanted := range []string{"checklist.md", "example.com", "skmr login"} {
+	for _, unwanted := range []string{"checklist.md", "example.com", "skmr auth login"} {
 		if strings.Contains(stdout, unwanted) {
 			t.Errorf("output reported %q, which is not a broken reference:\n%s", unwanted, stdout)
 		}
