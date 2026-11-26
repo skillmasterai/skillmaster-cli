@@ -15,6 +15,7 @@ import (
 	"github.com/skillmasterai/skillmaster-cli/internal/agentconfig"
 	"github.com/skillmasterai/skillmaster-cli/internal/config"
 	"github.com/skillmasterai/skillmaster-cli/internal/credentials"
+	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 	"github.com/skillmasterai/skillmaster-cli/internal/sandbox"
 )
 
@@ -36,7 +37,9 @@ func doctorCmd(ctx context.Context, args []string) error {
 	var problems []string
 	report := func(name, state, detail string) {
 		fmt.Printf("  %-10s %-4s %s\n", name, state, detail)
-		if state != "ok" {
+		// **"信息" is a state the person chose, not a fault.** A refusal is meant to be quiet; listing
+		// it under "没通过" would read as "the CLI is broken" right after the CLI obeyed them.
+		if state != "ok" && state != "信息" {
 			problems = append(problems, name)
 		}
 	}
@@ -111,6 +114,12 @@ func doctorCmd(ctx context.Context, args []string) error {
 		report("技能目录", "ok", skillsDir)
 	}
 
+	// 4.5 The rule: how many recorded files still carry it, never a path or a file's contents
+	// (ADR 0242). The internal default table is for reporting and is never printed here.
+	if stateErr == nil {
+		reportRuleState(stateDir, report)
+	}
+
 	// 5. Network: one request, three seconds. Reaching the server at all is what matters; a 404
 	// means the name resolves and something answers.
 	report("网络", networkState(ctx, server), server)
@@ -153,6 +162,80 @@ func doctorCmd(ctx context.Context, args []string) error {
 		fmt.Printf("\n有 %d 项没通过：%s\n", len(problems), strings.Join(problems, "、"))
 	}
 	return nil
+}
+
+// reportRuleState prints the state of the files this machine recorded, and no path or content.
+//
+// **It does not read the internal default table.** That table is for the account-level report only
+// (ADR 0242 §5): printing a "default location" line here would be the CLI telling a person — and an
+// agent reading the output — where to look, which is exactly what the table must not become.
+func reportRuleState(dir string, report func(name, state, detail string)) {
+	st, _, stateErr := rule.LoadState(dir)
+	// A refusal is reported whatever the records say: it is the person's answer, and the files are
+	// allowed to be missing afterwards without the CLI asking again.
+	if stateErr == nil && st.Declined {
+		report("守则", "信息", "已拒绝安装（skmr install --decline）；重新安装用 skmr install --file <路径> --yes")
+		return
+	}
+	statuses, err := rule.Check(dir)
+	switch {
+	case err != nil:
+		report("守则", "失败", err.Error())
+	case len(statuses) == 0:
+		report("守则", "注意", "没有安装记录；用 skmr install --file <路径> --yes 写一份")
+	default:
+		present, absent, modified, legacy, unmanaged, ignored, leftover := 0, 0, 0, 0, 0, 0, 0
+		for _, st := range statuses {
+			switch st.State {
+			case "present":
+				present++
+				if st.Detail != "" {
+					leftover++
+				}
+			case "legacy":
+				legacy++
+			case "unmanaged":
+				unmanaged++
+			case "ignored":
+				ignored++
+			case "absent":
+				absent++
+			default:
+				modified++
+			}
+		}
+		detail := fmt.Sprintf("已记录 %d 个文件：已安装 %d、不见了 %d、被改过 %d", len(statuses), present, absent, modified)
+		if leftover > 0 {
+			detail += fmt.Sprintf("、已安装但旁边有旧段 %d（skmr install --file <路径> --yes 清掉）", leftover)
+		}
+		if ignored > 0 {
+			detail += fmt.Sprintf("、读不到 %d（.mdc 缺 frontmatter，Cursor 会忽略）", ignored)
+		}
+		if legacy > 0 {
+			detail += fmt.Sprintf("、旧版 %d（下一次会写文件的命令会替换）", legacy)
+		}
+		if unmanaged > 0 {
+			detail += fmt.Sprintf("、不管 %d（项目级或符号链接）", unmanaged)
+		}
+		switch {
+		// **Two rule sets is not ok.** The line already says it, and the status has to agree: with
+		// the agent possibly reading both, a green 「守则 ok」 is the message that sends nobody.
+		case absent+modified+leftover > 0:
+			if absent+modified > 0 {
+				detail += "；重写用 skmr install --file <路径> --yes"
+			}
+			if ignored > 0 {
+				detail += "；缺 frontmatter 的那份先 skmr prompt print 再补写"
+			}
+			report("守则", "注意", detail)
+		case ignored > 0:
+			// **`install --file` alone would write the same ignored bytes again.** The missing piece
+			// is the frontmatter, and that has to come from the person or the agent.
+			report("守则", "注意", detail+"；先 skmr prompt print，把守则正文连同 frontmatter 写回同一个文件，再 skmr install --file <路径> --yes 登记")
+		default:
+			report("守则", "ok", detail)
+		}
+	}
 }
 
 // parseDoctorArgs reads the three flags --fix takes. `--undo` and `--dry-run` only mean something

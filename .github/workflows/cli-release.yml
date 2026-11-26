@@ -229,39 +229,15 @@ jobs:
       # uploaded before the install scripts so a script that can be fetched can already be
       # verified. Without the scripts' own hashes, "verify the download" would leave out the one
       # file that gets executed first.
-      # **The skill package travels with the release.** A user behind a network that cannot reach
-      # GitHub, on a machine with no Node, still needs a verified way to get the skill. Publishing
-      # the archive here puts it under `checksums.txt` — and therefore under the attestation and
-      # both signatures — instead of leaving the bucket serving a copy built somewhere else.
       #
-      # The ref is pinned: a floating `main` would let the bytes behind a version change after it
-      # was signed. Bumping it is a pull request, reviewed like any other change.
-      - name: Pack the skill
-        env:
-          SKILLS_COMMIT: 7a9de7941029f9badc8563da10ab6d620234ef63
-        run: |
-          set -euo pipefail
-          printf '%s' "$SKILLS_COMMIT" | grep -Eq '^[0-9a-f]{40}$' ||
-            { echo "::error::SKILLS_COMMIT is not a full commit sha"; exit 1; }
-          url="https://raw.githubusercontent.com/skillmasterai/skillmaster-skills/${SKILLS_COMMIT}/skills/skillmaster/SKILL.md"
-          tmp="$RUNNER_TEMP/skill"
-          rm -rf "$tmp"; mkdir -p "$tmp/skillmaster"
-          curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-delay 2 "$url" \
-            -o "$tmp/skillmaster/SKILL.md"
-          # One file, and it starts with the frontmatter the agent reads. A 404 page saved as
-          # SKILL.md would otherwise ship as a valid-looking archive.
-          [ "$(find "$tmp/skillmaster" -type f | wc -l | tr -d ' ')" -eq 1 ]
-          head -n 1 "$tmp/skillmaster/SKILL.md" | grep -qx -- '---'
-          # Deterministic: the same bytes in produce the same archive out, on any day.
-          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-            -czf "$GITHUB_WORKSPACE/dist/skillmaster.tgz" -C "$tmp" skillmaster
-          sha256sum "$GITHUB_WORKSPACE/dist/skillmaster.tgz"
+      # The entry skill's archive is no longer built or published (v94): the rule lives in the
+      # agent's own instruction file now, and there is no skill package for this manifest to cover.
       - name: Checksums
         working-directory: dist
         run: |
           set -euo pipefail
-          ls -1 skillmaster_*.tar.gz skillmaster_*.zip skillmaster.tgz > /dev/null
-          sha256sum skillmaster_*.tar.gz skillmaster_*.zip skillmaster.tgz > checksums.txt
+          ls -1 skillmaster_*.tar.gz skillmaster_*.zip > /dev/null
+          sha256sum skillmaster_*.tar.gz skillmaster_*.zip > checksums.txt
           ( cd "$GITHUB_WORKSPACE/install" && sha256sum install.sh install.ps1 ) >> checksums.txt
           cat checksums.txt
 
@@ -321,7 +297,6 @@ jobs:
           subject-path: |
             dist/skillmaster_*.tar.gz
             dist/skillmaster_*.zip
-            dist/skillmaster.tgz
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
             dist/checksums.txt.minisig
@@ -541,7 +516,7 @@ jobs:
           # seventh release attempt). The uploader knows the bucket exists; the check is a read
           # permission the release key has no reason to hold.
           staging="dl:${OSS_BUCKET}${ROOT}/releases/${VERSION}"
-          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
+          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
                    dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
                    install/install.sh install/install.ps1; do
             rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
@@ -549,11 +524,11 @@ jobs:
           done
           rclone lsf --s3-no-check-bucket "$staging" | sort
 
-      - name: The staging area holds all thirteen objects
+      - name: The staging area holds all twelve objects
         run: |
           set -euo pipefail
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/releases/${VERSION}"
-          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
+          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip; do
             name="$(basename "$f")"
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
             want="$(awk -v n="$name" '$2 == n { print $1 }' dist/checksums.txt)"
@@ -585,10 +560,10 @@ jobs:
         run: |
           set -euo pipefail
           staging="dl:${OSS_BUCKET}${ROOT}/releases/${VERSION}"
-          # The thirteen objects, in §6's order, in one place: the promote loop, the header check and
-          # the repair all have to mean the same thirteen or the check is a spot check.
+          # The twelve objects, in §6's order, in one place: the promote loop, the header check and
+          # the repair all have to mean the same twelve or the check is a spot check.
           objects() {
-            printf '%s\n' dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz dist/checksums.txt \
+            printf '%s\n' dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/checksums.txt \
               dist/checksums.txt.sigstore.json dist/checksums.txt.minisig dist/minisign.pub \
               install/install.sh install/install.ps1
           }
@@ -658,7 +633,7 @@ jobs:
               esac
             done
           fi
-          echo "Cache-Control: no-cache is on all thirteen live objects"
+          echo "Cache-Control: no-cache is on all twelve live objects"
 
           # The beta version string is the same across the line, so the marker carries the build.
           marker_text="$VERSION"
@@ -677,7 +652,7 @@ jobs:
             "https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}/version.txt")" || marker_status=000
           marker="$(cat /tmp/marker 2>/dev/null || true)"
           if [ "$marker_status" != "200" ] || [ "$marker" != "$marker_text" ]; then
-            echo "::error::the thirteen objects are live but ${ROOT:+$ROOT/}version.txt answers HTTP $marker_status and says '$marker' instead of '$marker_text'; re-run this tag to finish"
+            echo "::error::the twelve objects are live but ${ROOT:+$ROOT/}version.txt answers HTTP $marker_status and says '$marker' instead of '$marker_text'; re-run this tag to finish"
             exit 1
           fi
 
@@ -695,7 +670,7 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${OSS_BUCKET}.oss-cn-hangzhou.aliyuncs.com${ROOT}"
-          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip dist/skillmaster.tgz; do
+          for f in dist/skillmaster_*.tar.gz dist/skillmaster_*.zip; do
             name="$(basename "$f")"
             curl -fsSL --retry 5 --retry-delay 3 -o "/tmp/$name" "$base/$name"
             want="$(awk -v n="$name" '$2 == n { print $1 }' dist/checksums.txt)"
@@ -749,7 +724,6 @@ jobs:
           files=(
             dist/skillmaster_*.tar.gz
             dist/skillmaster_*.zip
-            dist/skillmaster.tgz
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
             dist/checksums.txt.minisig

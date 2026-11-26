@@ -3,11 +3,9 @@
 // **It lives here because it describes this CLI** (ADR 0102). Shipping it with the binary makes the
 // block and the command surface one artefact.
 //
-// **The CLI prints this text and nothing else** (ADR 0110, 2026-10-28). Older versions wrapped it in
-// `<!-- skillmaster:begin -->` / `<!-- skillmaster:end -->`, then located it again to report, update
-// or remove it, and carried `Append` / `WithLineEnding` / `UsesCRLF` for the write itself. All of
-// that went with the markers: the paragraph belongs to the person's file, the platform skill writes
-// it, and no CLI code path reads or writes a user file any more. What is left is the text, its
+// **This package owns the text; writing it is `internal/rule`'s job** (v94, ADR 0242). Older
+// versions wrapped it in `<!-- skillmaster:begin -->` / `<!-- skillmaster:end -->` and located it
+// again to report, update or remove it; those markers are gone. What is left here is the text, its
 // digest, and the line-ending normalisation the embedded copy needs on Windows.
 package prompt
 
