@@ -370,7 +370,7 @@ var topSpecs = []*help.Spec{
 	},
 	{
 		Path:    "self rule decline",
-		Summary: "不再提示守则更新",
+		Summary: "不再自动提示",
 		Usage:   "skmr self rule decline",
 		Output:  "记下「不再提示」：之后命令末尾不再出现守则更新提示；已写入的文件不动。",
 		Failures: []help.Failure{

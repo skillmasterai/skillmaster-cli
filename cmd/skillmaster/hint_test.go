@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/skillmasterai/skillmaster-cli/internal/api"
+	"github.com/skillmasterai/skillmaster-cli/internal/config"
 	"github.com/skillmasterai/skillmaster-cli/internal/rule"
 )
 
@@ -76,7 +78,7 @@ func TestHintTextSaysWhatChangedAndWhy(t *testing.T) {
 	for _, want := range []string{
 		fmt.Sprintf("第 %d 版", rule.Version),
 		"不是注入",
-		"每个新会话先查库",
+		"Skill 随叫随到",
 		"备份",
 	} {
 		if !strings.Contains(line, want) {
@@ -98,6 +100,7 @@ func TestHintAllowedKeepsTheNoticeOffOtherCommands(t *testing.T) {
 	for _, args := range [][]string{
 		{"help"}, {"auth", "status"}, {"auth", "login"}, {"self", "update"}, {"self", "doctor"},
 		{"usage"}, {"notifications", "list"}, {"feedback", "template"}, {"settings"},
+		{"self", "rule", "print"}, {"self", "rule", "check", "/h/C.md"}, {"self", "rule", "decline"},
 	} {
 		if hintAllowed(args) {
 			t.Errorf("%v was allowed to hint", args)
@@ -105,7 +108,7 @@ func TestHintAllowedKeepsTheNoticeOffOtherCommands(t *testing.T) {
 	}
 	for _, args := range [][]string{
 		{"skills", "search", "x"}, {"skill", "invoke", "a/b"}, {"run", "a/b", "--", "x"},
-		{"startup"}, {"self", "rule", "print"}, {"self", "rule", "check", "/h/C.md"},
+		{"startup"},
 	} {
 		if !hintAllowed(args) {
 			t.Errorf("%v was not allowed to hint", args)
@@ -178,21 +181,32 @@ func TestHintRuleStaysSilentWhenTheStateCannotBeRead(t *testing.T) {
 	}
 }
 
-// The wiring, not the function: a successful command carries the line, the next one does not, and
-// the state is where the run left it.
+// The wiring, not the function: a successful rule-using command carries the line, the next one does
+// not, and the state is where the run left it. `startup` is used because `self rule print` is the
+// payload and never hints.
 func TestRunPrintsTheRuleNoticeOnce(t *testing.T) {
-	dir := isolateConfig(t)
+	server := startupServer(t, "# 入门正文\n")
+	// **Windows resolves the config directory from %AppData%**, which startupServer does not set;
+	// without this the test would spend the developer's real notice.
+	t.Setenv("APPDATA", filepath.Join(os.Getenv("HOME"), "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(os.Getenv("HOME"), "AppData", "Local"))
+	t.Setenv(config.ServerEnv, server.URL)
+	t.Setenv(config.ApiKeyEnv, "skm_livekey123456")
+	dir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	hintRuns = true
 	t.Cleanup(func() { hintRuns = false })
 	first := captureStderr(t, func() {
-		if err := run(context.Background(), []string{"self", "rule", "print"}); err != nil {
-			t.Fatalf("self rule print: %v", err)
+		if err := run(context.Background(), []string{"startup"}); err != nil {
+			t.Fatalf("startup: %v", err)
 		}
 	})
 	if !strings.Contains(first, "skmr self rule print") {
 		t.Fatalf("the first command printed %q", first)
 	}
-	if second := captureStderr(t, func() { _ = run(context.Background(), []string{"self", "rule", "print"}) }); second != "" {
+	if second := captureStderr(t, func() { _ = run(context.Background(), []string{"startup"}) }); second != "" {
 		t.Errorf("the second command printed again: %q", second)
 	}
 	st, _, _ := rule.LoadLocalState(dir)
@@ -203,15 +217,15 @@ func TestRunPrintsTheRuleNoticeOnce(t *testing.T) {
 
 // **A refused command says nothing, and the notice stays unspent for the next success.**
 //
-// `self rule check` with no path fails inside the dispatch, after the deferred branch is armed; the
-// print path above would also pass with the success guard removed, because nothing can fail there.
+// `run` with no address is whitelisted and fails inside the dispatch, after the deferred branch is
+// armed; a `self rule` command would now pass with the success guard removed, because it never hints.
 func TestRunLeavesTheNoticeUnspentWhenTheCommandFails(t *testing.T) {
 	dir := isolateConfig(t)
 	hintRuns = true
 	t.Cleanup(func() { hintRuns = false })
 	out := captureStderr(t, func() {
-		if err := run(context.Background(), []string{"self", "rule", "check"}); err == nil {
-			t.Fatal("self rule check accepted a missing path")
+		if err := run(context.Background(), []string{"run"}); err == nil {
+			t.Fatal("run accepted a missing address")
 		}
 	})
 	if out != "" {
@@ -223,17 +237,20 @@ func TestRunLeavesTheNoticeUnspentWhenTheCommandFails(t *testing.T) {
 	}
 }
 
-// The alias carries the same notice, because it is the same command after the rewrite.
-func TestTheAliasCommandsAreAllowedToHint(t *testing.T) {
+// **The rule's own commands never carry the notice.** `prompt print` is the same command after the
+// rewrite; its stdout is written into the person's global file, so a notice on stderr would be
+// copied in by an agent that merges streams.
+func TestTheRuleCommandsDoNotHint(t *testing.T) {
 	isolateConfig(t)
 	hintRuns = true
 	t.Cleanup(func() { hintRuns = false })
-	out := captureStderr(t, func() {
-		if err := run(context.Background(), []string{"prompt", "print"}); err != nil {
-			t.Fatalf("prompt print: %v", err)
+	for _, args := range [][]string{{"prompt", "print"}, {"self", "rule", "print"}} {
+		if out := captureStderr(t, func() {
+			if err := run(context.Background(), args); err != nil {
+				t.Fatalf("%v: %v", args, err)
+			}
+		}); out != "" {
+			t.Errorf("%v printed %q on stderr", args, out)
 		}
-	})
-	if !strings.Contains(out, "skmr self rule print") {
-		t.Errorf("the alias printed %q, want the notice", out)
 	}
 }

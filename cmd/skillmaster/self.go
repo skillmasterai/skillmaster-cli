@@ -95,6 +95,15 @@ func ruleCheck(path string) error {
 	} else {
 		fmt.Printf("%s  %s\n", word, shown)
 	}
+	// **What changed, where the file is wrong.** The ordinary notice is off for the whole
+	// `self rule` group (see hintAllow); this is the one place it still helps, because the agent has
+	// just found an old or edited block and needs the reason to update it. stderr, because stdout
+	// answers the question and nothing is written from this output.
+	if state == "legacy" || state == "modified" {
+		if note := rule.VersionNote(rule.Version); note != "" {
+			fmt.Fprintf(os.Stderr, "守则已到第 %d 版：%s\n", rule.Version, sentence(note))
+		}
+	}
 	if state == "present" {
 		return nil
 	}
@@ -110,7 +119,7 @@ func ruleDecline() error {
 	if err := rule.SetDeclined(dir, true); err != nil {
 		return err
 	}
-	fmt.Println("已记下：不再提示守则更新。")
+	fmt.Println("已记下：不再自动提示守则更新。")
 	return nil
 }
 
