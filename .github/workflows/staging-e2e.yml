@@ -1,0 +1,129 @@
+# Pre-release smoke for the CLI against the staging environment.
+#
+# **It installs the candidate from `_test`, not from a local build.** The point is to exercise the
+# same installer, checksum path and binary a tester gets. The server and update channel are
+# overridden through the CLI's existing environment seams; the binary is not rebuilt for staging.
+#
+# **Two version inputs, because the tested build and the published tag print different strings.**
+# A `-test` tag builds version `1.11.0-test` while the live tag for the same commit builds
+# `1.11.0`; `candidate` is what `--version` must print, `release` is the version this run vouches
+# for. The run name carries both, and `cli-release.yml` matches the release in it — otherwise a run
+# dispatched from a commit could have installed a build from some other commit and still count.
+#
+# **Scope.** Install, auth, rule print/check, and the decline report. Auto-update (T4/T6) and the
+# database row (T3/T5 step 6) stay manual: the former needs two ordered `_test` builds, the latter
+# needs the staging host's psql. `.dev-sop/release/cli.md` says so.
+name: Staging E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'The version this run vouches for, e.g. 1.11.0 (the live tag it gates)'
+        required: true
+      candidate:
+        description: 'The version the installed binary must print, e.g. 1.11.0-test'
+        required: true
+
+run-name: Staging E2E ${{ inputs.release }} (${{ inputs.candidate }})
+
+permissions:
+  contents: read
+
+# **No workflow-level `env` here.** A top-level env is evaluated without an environment context,
+# so `vars.STAGING_*` defined on the `staging` Environment resolve to empty. Each step below reads
+# the variables through its own `env:`.
+
+jobs:
+  macos:
+    name: macOS install, auth, rule and report
+    runs-on: macos-14
+    environment: staging
+    steps:
+      - name: Install the candidate from the test channel
+        env:
+          SKILLMASTER_DL_URL: ${{ vars.STAGING_DL_URL }}
+          SKILLMASTER_INSTALL_DIR: ${{ runner.temp }}/bin
+        run: |
+          set -euo pipefail
+          : "${SKILLMASTER_DL_URL:?the staging environment does not define STAGING_DL_URL}"
+          mkdir -p "$SKILLMASTER_INSTALL_DIR"
+          curl -fsSL "$SKILLMASTER_DL_URL/install.sh" -o "$RUNNER_TEMP/install.sh"
+          SKILLMASTER_DL_URL="$SKILLMASTER_DL_URL" SKILLMASTER_INSTALL_DIR="$SKILLMASTER_INSTALL_DIR" \
+            bash "$RUNNER_TEMP/install.sh"
+          printed="$("$SKILLMASTER_INSTALL_DIR/skmr" --version)"
+          echo "$printed"
+          # `_test` builds embed their commit, so this also proves the candidate is the build for
+          # this run's commit — not some other build that happens to share the version string.
+          short="${GITHUB_SHA:0:7}"
+          case "$printed" in
+            "skmr ${{ inputs.candidate }} (${short}) (API "*) ;;
+            *) echo "::error::installed binary prints '$printed', expected version ${{ inputs.candidate }} built from ${short}; rebuild the _test candidate from this commit and re-run" >&2
+               exit 1 ;;
+          esac
+
+      # **`decline` runs first, before any other successful command.** Every successful command
+      # sends the coverage report at most once per 24h; an `auth status` first would send
+      # `declined=false` and throttle the decline. T3/T5 expect the declined row.
+      - name: Auth against staging
+        env:
+          SKILLMASTER_SERVER: ${{ vars.STAGING_SERVER }}
+          SKILLMASTER_API_KEY: ${{ secrets.STAGING_API_KEY }}
+          SKILLMASTER_HOME: ${{ runner.temp }}/skmr-home
+        run: |
+          set -euo pipefail
+          : "${SKILLMASTER_SERVER:?the staging environment does not define STAGING_SERVER}"
+          export PATH="${{ runner.temp }}/bin:$PATH"
+          test -n "$SKILLMASTER_API_KEY"
+          skmr self rule decline
+          skmr auth status
+          skmr self rule print > "$RUNNER_TEMP/rule.md"
+          skmr self rule check "$RUNNER_TEMP/rule.md"
+          grep -q '"declined":true' "$SKILLMASTER_HOME/rule-state.json"
+
+  windows:
+    name: Windows install, auth, rule and report
+    runs-on: windows-latest
+    environment: staging
+    steps:
+      - name: Install the candidate from the test channel
+        shell: pwsh
+        env:
+          SKILLMASTER_DL_URL: ${{ vars.STAGING_DL_URL }}
+          SKILLMASTER_INSTALL_DIR: ${{ runner.temp }}\SkillMaster\bin
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SKILLMASTER_DL_URL) { throw 'the staging environment does not define STAGING_DL_URL' }
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+          New-Item -ItemType Directory -Force -Path $env:SKILLMASTER_INSTALL_DIR | Out-Null
+          Invoke-WebRequest -Uri "$env:SKILLMASTER_DL_URL/install.ps1" -OutFile "$env:RUNNER_TEMP\install.ps1"
+          & "$env:RUNNER_TEMP\install.ps1"
+          $printed = & "$env:SKILLMASTER_INSTALL_DIR\skmr.exe" --version
+          Write-Output $printed
+          # Same commit binding as macOS: the _test build embeds the commit it was built from.
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          if ($printed -notlike "skmr ${{ inputs.candidate }} ($short) (API *") {
+            throw "installed binary prints '$printed', expected version ${{ inputs.candidate }} built from $short"
+          }
+
+      # Same ordering as macOS: `decline` is the first successful command so the report it sends
+      # is the declined one.
+      - name: Auth against staging
+        shell: pwsh
+        env:
+          SKILLMASTER_SERVER: ${{ vars.STAGING_SERVER }}
+          SKILLMASTER_API_KEY: ${{ secrets.STAGING_API_KEY }}
+          SKILLMASTER_HOME: ${{ runner.temp }}\skmr-home
+          SKILLMASTER_INSTALL_DIR: ${{ runner.temp }}\SkillMaster\bin
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SKILLMASTER_SERVER) { throw 'the staging environment does not define STAGING_SERVER' }
+          $env:PATH = "$env:SKILLMASTER_INSTALL_DIR;$env:PATH"
+          if (-not $env:SKILLMASTER_API_KEY) { throw 'STAGING_API_KEY is not set' }
+          skmr self rule decline
+          skmr auth status
+          $rule = Join-Path $env:RUNNER_TEMP 'rule.md'
+          skmr self rule print | Set-Content -NoNewline -Encoding utf8 $rule
+          skmr self rule check $rule
+          $state = Get-Content (Join-Path $env:SKILLMASTER_HOME 'rule-state.json') -Raw
+          if ($state -notmatch '"declined":true') { throw "rule-state.json does not record the decline: $state" }
