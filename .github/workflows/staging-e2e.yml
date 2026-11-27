@@ -37,7 +37,7 @@ permissions:
 jobs:
   macos:
     name: macOS install, auth, rule and report
-    runs-on: macos-14
+    runs-on: macos-15
     environment: staging
     steps:
       - name: Install the candidate from the test channel
@@ -123,7 +123,11 @@ jobs:
           skmr self rule decline
           skmr auth status
           $rule = Join-Path $env:RUNNER_TEMP 'rule.md'
-          skmr self rule print | Set-Content -NoNewline -Encoding utf8 $rule
+          # **Byte-for-byte, the way `>` does on macOS.** `Set-Content -Encoding utf8` writes a BOM
+          # and rewrites line endings, and `rule check` compares bytes — the first run reported the
+          # untouched file as 「守则被改过」. cmd.exe's redirection writes the process's bytes as is.
+          cmd /c "skmr self rule print > `"$rule`""
+          if ($LASTEXITCODE -ne 0) { throw 'skmr self rule print failed' }
           skmr self rule check $rule
           $state = Get-Content (Join-Path $env:SKILLMASTER_HOME 'rule-state.json') -Raw
           if ($state -notmatch '"declined":true') { throw "rule-state.json does not record the decline: $state" }
