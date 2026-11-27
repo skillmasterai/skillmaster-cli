@@ -97,11 +97,16 @@ jobs:
           # that cannot be mistaken for a release.
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             version="0.0.0-test.${GITHUB_RUN_NUMBER}"
+            # **A test build names its commit too.** Several `_test` builds can carry the same
+            # version string, and the E2E gate has to say which build it ran; the short sha also
+            # lets staging-e2e assert the installed binary is the candidate for its own commit.
+            revision="${GITHUB_SHA:0:7}"
             {
               echo "version=$version"
               echo "channel=test"
+              echo "revision=$revision"
             } >> "$GITHUB_OUTPUT"
-            echo "$version is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
+            echo "$version ($revision) is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           version="${GITHUB_REF_NAME#cli/v}"
@@ -116,9 +121,15 @@ jobs:
           # publish job under `_test/`. `cli/v1.6.2-test` is how the next real release is tried
           # without spending the number or touching a live key.
           if printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-test(\.[0-9]+)?$'; then
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-            echo "channel=test" >> "$GITHUB_OUTPUT"
-            echo "$version is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
+            # Same reason as the rehearsal above: a `-test` version is reused across builds, so the
+            # commit is what identifies the candidate the E2E ran.
+            revision="${GITHUB_SHA:0:7}"
+            {
+              echo "version=$version"
+              echo "channel=test"
+              echo "revision=$revision"
+            } >> "$GITHUB_OUTPUT"
+            echo "$version ($revision) is a rehearsal: it publishes under \`_test/\` and the live site never sees it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # A beta tag is a published build for testers. The version names the line; the commit
@@ -364,6 +375,7 @@ jobs:
     # the only repository write this job performs, and it is scoped to this job.
     permissions:
       contents: write
+      actions: read
     # **Publish runs queue; builds do not.** The keys carry no version, so two publish jobs at once
     # can interleave one version's packages with another's checksums.txt and each can still pass its
     # own check. Scoped to this job because a prerelease build has nothing to collide with.
@@ -402,6 +414,39 @@ jobs:
         with:
           # The Gitee mirror pushes this history; a depth-1 clone cannot be pushed.
           fetch-depth: 0
+
+      # **A formal release is not the first place this binary runs.** The staging smoke must have
+      # passed for the same commit on macOS and Windows. A test/beta build is not gated: those
+      # channels are how the smoke itself gets a candidate.
+      # **The run must have vouched for this version, not just run on this commit.** The E2E
+      # workflow installs whatever `_test/version.txt` points at, so it takes a required
+      # `candidate` input, asserts the installed binary prints it, and puts the `release` it
+      # vouches for in the run name (`Staging E2E <release> (<candidate>)`). A run for any other
+      # release does not count, even from the same commit.
+      #
+      # **No `status=success` on the list query.** That index lags a finished run (the same
+      # 2026-11-10 finding as console.yml); the run's own conclusion is the gate.
+      - name: The staging E2E passed
+        if: needs.build.outputs.channel == 'live'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          prefix="Staging E2E ${VERSION} ("
+          # **`jq -r --arg`, not `gh api --jq --arg`.** `gh api` has no `--arg`; it would treat the
+          # flag as the jq program and fail with "accepts 1 arg(s)". The run list is fetched first,
+          # then filtered by the standalone jq.
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/staging-e2e.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
+            > "$RUNNER_TEMP/staging-runs.json"
+          run_id="$(jq -r --arg prefix "$prefix" \
+            '[.workflow_runs[] | select((.display_title | startswith($prefix)) and .conclusion == "success")][0].id // empty' \
+            "$RUNNER_TEMP/staging-runs.json")"
+          if [ -z "$run_id" ]; then
+            echo "::error::no successful Staging E2E run named '${prefix}…)' for $GITHUB_SHA; run the Staging E2E workflow with release=$VERSION and the candidate's version first" >&2
+            exit 1
+          fi
+          echo "staging E2E run $run_id passed for $GITHUB_SHA (release $VERSION)"
 
       - name: Fetch the packages
         uses: actions/download-artifact@v4
@@ -635,9 +680,13 @@ jobs:
           fi
           echo "Cache-Control: no-cache is on all twelve live objects"
 
-          # The beta version string is the same across the line, so the marker carries the build.
+          # Beta and test version strings are reused across builds, so those markers carry the
+          # commit; the updater's parser accepts both shapes and compares revisions when both sides
+          # name one.
           marker_text="$VERSION"
-          [ "$ROOT" = /beta ] && marker_text="$VERSION ($REVISION)"
+          case "$ROOT" in
+            /beta|/_test) marker_text="$VERSION ($REVISION)" ;;
+          esac
           printf '%s\n' "$marker_text" > /tmp/version.txt
           rclone copyto --s3-no-check-bucket --retries 3 --s3-acl public-read --header-upload "Cache-Control: no-cache" \
             /tmp/version.txt "dl:${OSS_BUCKET}${ROOT}/version.txt"
